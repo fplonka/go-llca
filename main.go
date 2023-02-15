@@ -2,15 +2,12 @@ package main
 
 import (
 	"fmt"
-	// "image"
 	"image/color"
 	"image/png"
 	"log"
 	"math/rand"
 	"os"
 	"strconv"
-
-	// "time"B
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -25,17 +22,14 @@ var (
 )
 
 const (
-	scaleFactor                           = 1
+	scaleFactor                           = 2
 	avgStartingLiveCellPercentage float64 = 6.0 // # out of 100
 	saveRun                               = false
-	gensToRun                             = 10 * 60
+	gensToRun                             = 100 * 60
 )
 
-// good runs: 6, 13, some other one, 14
-
 func init() {
-	// rand.Seed(time.Now().UnixNano())
-	rand.Seed(0)
+	rand.New(rand.NewSource(0))
 
 	if saveRun {
 		path := "run_count"
@@ -150,9 +144,24 @@ func (g *Game) Update() error {
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.DrawImage(g.pixels, nil)
-	if !saveRun {
-		ebitenutil.DebugPrint(screen, fmt.Sprintf("%.2f gen %v", ebiten.CurrentFPS(), g.generation))
+	// if !saveRun {
+	// 	ebitenutil.DebugPrint(screen, fmt.Sprintf("%.2f gen %v", ebiten.ActualFPS(), g.generation))
+	// }
+
+	info := "birth rules: "
+	for _, v := range BRules {
+		info += strconv.Itoa(int(v)) + " "
+
 	}
+	info += "\n"
+	info += "survive rules: "
+	for _, v := range SRules {
+		info += strconv.Itoa(int(v)) + " "
+
+	}
+	info += "\n"
+
+	ebitenutil.DebugPrint(screen, info)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -160,8 +169,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func (g *Game) Init() {
-	// x, y := ebiten.ScreenSizeInFullscreen()
-	x, y := 2560, 1600
+	x, y := ebiten.ScreenSizeInFullscreen()
 	g.gridX = x / scaleFactor
 	g.gridY = y / scaleFactor
 
@@ -195,12 +203,10 @@ func (g *Game) Init() {
 }
 
 func main() {
-	ebiten.SetWindowSize(2560, 1600)
+	ebiten.SetWindowSize(ebiten.ScreenSizeInFullscreen())
 	ebiten.SetFullscreen(true)
-	ebiten.SetMaxTPS(ebiten.SyncWithFPS)
-	// ebiten.SetVsyncEnabled(true)
-	ebiten.SetWindowTitle("conway but good")
-	fmt.Println(ebiten.ScreenSizeInFullscreen())
+	ebiten.SetTPS(ebiten.SyncWithFPS)
+	ebiten.SetWindowTitle("go-llca")
 	ebiten.SetFPSMode(ebiten.FPSModeVsyncOffMaximum)
 	// ebiten.SetFPSMode(ebiten.FPSModeVsyncOn)
 	g := &Game{}
@@ -209,3 +215,11 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
+// TODO
+// - UI:
+// 	- automaton rule
+// 	- scale
+// 	- fps (capped vs uncapped)
+// 	- seed
+// 	- hide fps / generation bar
