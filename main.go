@@ -44,7 +44,6 @@ func init() {
 	copy(BRulesBuffer, BRules)
 	SRulesBuffer = make([]uint8, len(SRules))
 	copy(SRulesBuffer, SRules)
-	scaleFactorIndex = scaleFactor
 
 	fontBytes, err := os.ReadFile("fonts/JetBrainsMono-Medium.ttf")
 	if err != nil {
@@ -278,8 +277,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			"use number keys to modify cell %v rules (press TAB to switch, C to clear)",
 			"use - and + to change initial live cell percentage (hold SHIFT for a smaller increment)",
 			"use [ and ] to change scale factor",
-			"press SPACE to pause/unpause or R to restart with new settings",
-			"press F to toggle FPS visibility and SHIFT+F to toggle FPS cap"}
+			"press F to toggle FPS visibility and SHIFT+F to toggle FPS cap",
+			"",
+			"press SPACE to pause/unpause or R to restart with new settings"}
 
 		infoFormatString := strings.Join(lines, "\n")
 
