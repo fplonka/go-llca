@@ -46,7 +46,7 @@ func init() {
 	copy(SRulesBuffer, SRules)
 	scaleFactorIndex = scaleFactor
 
-	fontBytes, err := os.ReadFile("JetBrainsMono-Medium.ttf")
+	fontBytes, err := os.ReadFile("fonts/JetBrainsMono-Medium.ttf")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -71,7 +71,6 @@ func init() {
 			possibleScaleFactors = append(possibleScaleFactors, i)
 		}
 	}
-	fmt.Println("possible:", possibleScaleFactors)
 }
 
 func becomesAlive(n uint8) bool {
@@ -107,6 +106,7 @@ const (
 
 type Game struct {
 	worldGrid           []uint8
+	buffer              []uint8
 	gridX, gridY        int
 	transparencyOverlay *ebiten.Image
 	pixels              *ebiten.Image
@@ -215,8 +215,7 @@ func (g *Game) Update() error {
 		os.Exit(0)
 	}
 
-	buffer := make([]uint8, (g.gridX+2)*(g.gridY+2))
-	copy(buffer, g.worldGrid)
+	copy(g.buffer, g.worldGrid)
 	for i := 1; i <= g.gridY; i++ {
 		for j := 1; j <= g.gridX; j++ {
 			ind := i*(g.gridX+2) + j
@@ -225,18 +224,18 @@ func (g *Game) Update() error {
 			}
 			val := g.worldGrid[ind]
 			if becomesAlive(val) { // cell becomes alive
-				buffer[ind] |= 1
+				g.buffer[ind] |= 1
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
-						buffer[(i+a)*(g.gridX+2)+j+b] += 2
+						g.buffer[(i+a)*(g.gridX+2)+j+b] += 2
 					}
 				}
 				g.pixels.Set(j-1, i-1, color.White)
 			} else if becomesDead(val) { // cell dies
-				buffer[ind] -= 1
+				g.buffer[ind] -= 1
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
-						buffer[(i+a)*(g.gridX+2)+j+b] -= 2
+						g.buffer[(i+a)*(g.gridX+2)+j+b] -= 2
 					}
 				}
 				g.pixels.Set(j-1, i-1, color.Black)
@@ -244,7 +243,7 @@ func (g *Game) Update() error {
 
 		}
 	}
-	copy(g.worldGrid, buffer)
+	copy(g.worldGrid, g.buffer)
 
 	return nil
 }
@@ -316,7 +315,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return ebiten.ScreenSizeInFullscreen()
-	// return g.gridX, g.gridY
 }
 
 func (g *Game) Init() {
@@ -336,6 +334,7 @@ func (g *Game) Init() {
 	g.pixels = ebiten.NewImage(g.gridX, g.gridY)
 	g.pixels.Fill(color.Black)
 	g.worldGrid = make([]uint8, (g.gridX+2)*(g.gridY+2))
+	g.buffer = make([]uint8, (g.gridX+2)*(g.gridY+2))
 	for i := 1; i <= g.gridY; i++ {
 		for j := 1; j <= g.gridX; j++ {
 			if rand.Intn(100000) < int(1000*avgStartingLiveCellPercentage) {

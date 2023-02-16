@@ -15,4 +15,4 @@
 # vendor/
 
 .vscode/
-run_count
+.DS_Store
