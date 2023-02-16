@@ -35,8 +35,6 @@ var (
 	isFpsVisible                  bool = true
 )
 
-const ()
-
 func init() {
 	rand.New(rand.NewSource(seed))
 
@@ -144,17 +142,21 @@ func (g *Game) updatePaused() error {
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEqual) {
-		if ebiten.IsKeyPressed(ebiten.KeyShift) {
+		if ebiten.IsKeyPressed(ebiten.KeyControl) {
 			avgStartingLiveCellPercentage += 0.1
-		} else {
+		} else if ebiten.IsKeyPressed(ebiten.KeyShift) {
 			avgStartingLiveCellPercentage += 1.0
+		} else {
+			avgStartingLiveCellPercentage += 10.0
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyMinus) {
-		if ebiten.IsKeyPressed(ebiten.KeyShift) {
+		if ebiten.IsKeyPressed(ebiten.KeyControl) {
 			avgStartingLiveCellPercentage -= 0.1
-		} else {
+		} else if ebiten.IsKeyPressed(ebiten.KeyShift) {
 			avgStartingLiveCellPercentage -= 1.0
+		} else {
+			avgStartingLiveCellPercentage -= 10.0
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) && scaleFactorIndex+1 < len(possibleScaleFactors) {
@@ -275,7 +277,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			"%.2f FPS, generation %v",
 			"",
 			"use number keys to modify cell %v rules (press TAB to switch, C to clear)",
-			"use - and + to change initial live cell percentage (hold SHIFT for a smaller increment)",
+			"use - and + to change initial live cell percentage (hold SHIFT for a smaller increment or CTRL for the smallest)",
 			"use [ and ] to change scale factor",
 			"press F to toggle FPS visibility and SHIFT+F to toggle FPS cap",
 			"",
@@ -370,16 +372,10 @@ func main() {
 	}
 }
 
-// TODO
-// - UI:
-// 	- fps (capped vs uncapped)
-// 	- seed
-// 	- hide fps / generation bar
-//  - control info
-
+// TODO:
 // holding key down to change scale/live%
-
-// BOUNDS ON SCALE FACTOR AND CELL PERCENTAGE
+// save the given parameter config to a file
+// save a given run to a .gif or .mp4
 
 // cute idea: CA-based evolution
 // have cells randomly mutate their rules when being born sometimes (?)
