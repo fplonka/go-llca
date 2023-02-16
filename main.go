@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"sort"
@@ -11,21 +12,25 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/exp/slices"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
 )
 
 // cool ones: 2456/5678, 3456/5678, 456/1234, 45678/2345, 345/4567 @156-165, 36/125, 3/123456, 3/1347
 var (
-	BRules                                = []uint8{3, 5, 6, 7, 8}
-	SRules                                = []uint8{5, 6, 7, 8}
-	BRulesBuffer                          = []uint8{}
-	SRulesBuffer                          = []uint8{}
-	scaleFactor                           = 1
+	BRules                            = []uint8{3, 5, 6, 7, 8}
+	SRules                            = []uint8{5, 6, 7, 8}
+	BRulesBuffer                      = []uint8{}
+	SRulesBuffer                      = []uint8{}
+	scaleFactor                   int = 2
+	scaleFactorBuffer             int
 	avgStartingLiveCellPercentage float64 = 50.0 // # out of 100
 	gensToRun                             = 180 * 60
 	seed                          int64   = 0
+	uiFont                        font.Face
 )
 
 const ()
@@ -35,9 +40,27 @@ func init() {
 
 	BRulesBuffer = make([]uint8, len(BRules))
 	copy(BRulesBuffer, BRules)
-
 	SRulesBuffer = make([]uint8, len(SRules))
 	copy(SRulesBuffer, SRules)
+	scaleFactorBuffer = scaleFactor
+
+	fontBytes, err := os.ReadFile("JetBrainsMono-Medium.ttf")
+	if err != nil {
+		log.Fatal(err)
+	}
+	tt, err := opentype.Parse(fontBytes)
+	if err != nil {
+		log.Fatal(err)
+	}
+	screenX, screenY := ebiten.ScreenSizeInFullscreen()
+	uiFont, err = opentype.NewFace(tt, &opentype.FaceOptions{
+		Size:    11,
+		DPI:     math.Sqrt(float64(screenX*screenY) / 100),
+		Hinting: font.HintingFull,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func becomesAlive(n uint8) bool {
@@ -124,6 +147,12 @@ func (g *Game) updatePaused() error {
 			avgStartingLiveCellPercentage -= 1.0
 		}
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) {
+		scaleFactorBuffer++
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) {
+		scaleFactorBuffer--
+	}
 
 	// TOOD: check if 0 is handled correctly in updates
 	nums := []uint8{}
@@ -195,59 +224,75 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Restart() {
-	g.Init()
 	BRules = make([]uint8, len(BRulesBuffer))
 	copy(BRules, BRulesBuffer)
 
 	SRules = make([]uint8, len(SRulesBuffer))
 	copy(SRules, SRulesBuffer)
 	g.generation = 0
+
+	scaleFactor = scaleFactorBuffer
+	g.Init()
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.DrawImage(g.pixels, nil)
-	if g.isPaused {
-		screen.DrawImage(g.transparencyOverlay, nil)
+	options := &ebiten.DrawImageOptions{}
+	options.GeoM.Scale(float64(scaleFactor), float64(scaleFactor))
+	screen.DrawImage(g.pixels, options)
 
-		var sb strings.Builder
+	fmt.Println(screen.Size())
+
+	if g.isPaused {
+		screen.DrawImage(g.transparencyOverlay, options)
+
+		lines := []string{
+			"%vbirth rules: %v",
+			"%vsurvival rules: %v",
+			"inital percentage of live cells: %.1f",
+			"scale factor: %v",
+			"%.2f FPS, generation %v",
+			"",
+			"use number keys to modify cell %v rules (press TAB to switch)",
+			"use - and + to change initial live cell percentage (hold SHIFT for a smaller increment)",
+			"use [ and ] to change scale factor",
+			"press SPACE to pause/unpause or R to restart with new settings",
+			"press F to toggle FPS visibility"}
+
+		infoFormatString := strings.Join(lines, "\n")
 
 		changeType := "BIRTH"
 		if g.editState == ChangingSurviveRules {
-			sb.WriteString("SURVIVAL")
+			changeType = "SURVIVAL"
 		}
-		sb.WriteString(fmt.Sprintf("use number keys to modify cell %v rules (press TAB to switch)\n", changeType))
 
-		if g.editState == ChangingBirthRules {
-			sb.WriteString("*")
-		}
-		sb.WriteString("birth rules: ")
-		for _, v := range BRulesBuffer {
-			sb.WriteString(strconv.Itoa(int(v)) + " ")
-
-		}
-		sb.WriteString("\n")
-
+		birthRulesIndicator := "*"
+		survivalRulesIndicator := ""
 		if g.editState == ChangingSurviveRules {
-			sb.WriteString("*")
+			birthRulesIndicator = ""
+			survivalRulesIndicator = "*"
 		}
-		sb.WriteString("survival rules: ")
+
+		birthRules := ""
+		for _, v := range BRulesBuffer {
+			birthRules += strconv.Itoa(int(v)) + " "
+		}
+		survivalRules := ""
 		for _, v := range SRulesBuffer {
-			sb.WriteString(strconv.Itoa(int(v)) + " ")
-
+			survivalRules += strconv.Itoa(int(v)) + " "
 		}
-		sb.WriteString("\n\n")
 
-		sb.WriteString(fmt.Sprintf("percentage of inital cells alive: %.1f\n", avgStartingLiveCellPercentage))
-		sb.WriteString(fmt.Sprintf("%.2f FPS \ngeneration %v", ebiten.ActualFPS(), g.generation))
+		infoString := fmt.Sprintf(infoFormatString, birthRulesIndicator, birthRules, survivalRulesIndicator, survivalRules,
+			avgStartingLiveCellPercentage, scaleFactorBuffer, ebiten.ActualFPS(), g.generation, changeType)
 
-		ebitenutil.DebugPrint(screen, sb.String())
+		text.Draw(screen, infoString, uiFont, 20, 40, color.White)
 	} else {
-		ebitenutil.DebugPrint(screen, fmt.Sprintf("%.2f FPS \ngeneration %v", ebiten.ActualFPS(), g.generation))
+		text.Draw(screen, fmt.Sprintf("%.2f FPS \ngeneration %v", ebiten.ActualFPS(), g.generation), uiFont, 20, 40, color.White)
 	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return g.gridX, g.gridY
+	return ebiten.ScreenSizeInFullscreen()
+	// return g.gridX, g.gridY
 }
 
 func (g *Game) Init() {
@@ -310,6 +355,8 @@ func main() {
 // 	- seed
 // 	- hide fps / generation bar
 //  - control info
+
+// PREVENT NEGATIVE CELL %
 
 // space to pause/unpause
 // enter to start a new run with the given settings
