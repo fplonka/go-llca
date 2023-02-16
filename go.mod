@@ -2,7 +2,10 @@ module go-llca
 
 go 1.20
 
-require github.com/hajimehoshi/ebiten/v2 v2.4.16
+require (
+	github.com/hajimehoshi/ebiten/v2 v2.4.16
+	golang.org/x/exp v0.0.0-20230213192124-5e25df0256eb
+)
 
 require (
 	github.com/ebitengine/purego v0.1.1 // indirect

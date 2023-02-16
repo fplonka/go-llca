@@ -8,19 +8,23 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"golang.org/x/exp/slices"
 )
 
 // cool ones: 2456/5678, 3456/5678, 456/1234, 45678/2345, 345/4567 @156-165, 36/125, 3/123456, 3/1347
 var (
-	BRules                                = []uint8{3}
-	SRules                                = []uint8{2, 3}
-	scaleFactor                           = 2
-	avgStartingLiveCellPercentage float64 = 6.0 // # out of 100
-	gensToRun                             = 100 * 60
+	BRules                                = []uint8{3, 5, 6, 7, 8}
+	SRules                                = []uint8{5, 6, 7, 8}
+	BRulesBuffer                          = []uint8{}
+	SRulesBuffer                          = []uint8{}
+	scaleFactor                           = 1
+	avgStartingLiveCellPercentage float64 = 50.0 // # out of 100
+	gensToRun                             = 180 * 60
 	seed                          int64   = 0
 )
 
@@ -28,6 +32,12 @@ const ()
 
 func init() {
 	rand.New(rand.NewSource(seed))
+
+	BRulesBuffer = make([]uint8, len(BRules))
+	copy(BRulesBuffer, BRules)
+
+	SRulesBuffer = make([]uint8, len(SRules))
+	copy(SRulesBuffer, SRules)
 }
 
 func becomesAlive(n uint8) bool {
@@ -62,33 +72,90 @@ const (
 )
 
 type Game struct {
-	worldGrid    []uint8
-	gridX, gridY int
-	pixels       *ebiten.Image
-	generation   int
-	name         string
-	isPaused     bool
-	editState    EditState
+	worldGrid           []uint8
+	gridX, gridY        int
+	transparencyOverlay *ebiten.Image
+	pixels              *ebiten.Image
+	generation          int
+	name                string
+	isPaused            bool
+	editState           EditState
+}
+
+func updateRules(rules []uint8, nums []uint8) []uint8 {
+	res := []uint8{}
+
+	all := []uint8{}
+	all = append(all, nums...)
+	all = append(all, rules...)
+
+	for _, v := range all {
+		// add only those nums which appear in exactly one of the two slices
+		if slices.Contains(rules, v) != slices.Contains(nums, v) {
+			res = append(res, v)
+		}
+	}
+
+	return res
+}
+
+func (g *Game) updatePaused() error {
+	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+		g.editState = !g.editState
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
+		if g.editState == ChangingBirthRules {
+			BRulesBuffer = []uint8{}
+		} else {
+			SRulesBuffer = []uint8{}
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEqual) {
+		if ebiten.IsKeyPressed(ebiten.KeyShift) {
+			avgStartingLiveCellPercentage += 0.1
+		} else {
+			avgStartingLiveCellPercentage += 1.0
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyMinus) {
+		if ebiten.IsKeyPressed(ebiten.KeyShift) {
+			avgStartingLiveCellPercentage -= 0.1
+		} else {
+			avgStartingLiveCellPercentage -= 1.0
+		}
+	}
+
+	// TOOD: check if 0 is handled correctly in updates
+	nums := []uint8{}
+	keys := []ebiten.Key{ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8}
+	for _, key := range keys {
+		if inpututil.IsKeyJustPressed(key) {
+			nums = append(nums, uint8(int(key)-int(ebiten.Key0)))
+		}
+	}
+
+	if g.editState == ChangingBirthRules {
+		BRulesBuffer = updateRules(BRulesBuffer, nums)
+	} else {
+		SRulesBuffer = updateRules(SRulesBuffer, nums)
+	}
+
+	sort.Slice(BRulesBuffer, func(i, j int) bool { return BRulesBuffer[i] < BRulesBuffer[j] })
+	sort.Slice(SRulesBuffer, func(i, j int) bool { return SRulesBuffer[i] < SRulesBuffer[j] })
+	return nil
 }
 
 func (g *Game) Update() error {
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		g.Restart()
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.isPaused = !g.isPaused
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
-		g.Restart()
-	}
 	if g.isPaused {
-		if inpututil.IsKeyJustPressed(ebiten.KeyB) {
-			g.editState = ChangingBirthRules
-		} else if inpututil.IsKeyJustPressed(ebiten.KeyS) {
-			g.editState = ChangingSurviveRules
-		}
-
-		sort.Slice(BRules, func(i, j int) bool { return BRules[i] < BRules[j] })
-		sort.Slice(SRules, func(i, j int) bool { return SRules[i] < SRules[j] })
-		return nil
+		return g.updatePaused()
 	}
+
 	g.generation++
 	if g.generation == gensToRun {
 		os.Exit(0)
@@ -129,45 +196,53 @@ func (g *Game) Update() error {
 
 func (g *Game) Restart() {
 	g.Init()
+	BRules = make([]uint8, len(BRulesBuffer))
+	copy(BRules, BRulesBuffer)
+
+	SRules = make([]uint8, len(SRulesBuffer))
+	copy(SRules, SRulesBuffer)
 	g.generation = 0
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.DrawImage(g.pixels, nil)
 	if g.isPaused {
-		transparencyOverlay := ebiten.NewImage(g.gridX, g.gridY)
-		// transparencyOverlay.Fill(color.RGBA64{255, 255, 255, 128})
-		c := color.Black
-		fmt.Println(c.RGBA())
-		transparencyOverlay.Fill(color.RGBA{0, 0, 0, 255 * 3 / 4}) // black but not completely opaque
-		screen.DrawImage(transparencyOverlay, nil)
+		screen.DrawImage(g.transparencyOverlay, nil)
 
-		info := ""
-		info += "use number keys to modify cell "
+		var sb strings.Builder
+
+		changeType := "BIRTH"
+		if g.editState == ChangingSurviveRules {
+			sb.WriteString("SURVIVAL")
+		}
+		sb.WriteString(fmt.Sprintf("use number keys to modify cell %v rules (press TAB to switch)\n", changeType))
+
 		if g.editState == ChangingBirthRules {
-			info += "BIRTH"
-		} else {
-			info += "SURIVAL"
+			sb.WriteString("*")
 		}
-		info += " rules (press S or B to switch)\n"
-
-		info += "birth rules: "
-		for _, v := range BRules {
-			info += strconv.Itoa(int(v)) + " "
+		sb.WriteString("birth rules: ")
+		for _, v := range BRulesBuffer {
+			sb.WriteString(strconv.Itoa(int(v)) + " ")
 
 		}
-		info += "\n"
-		info += "survive rules: "
-		for _, v := range SRules {
-			info += strconv.Itoa(int(v)) + " "
+		sb.WriteString("\n")
+
+		if g.editState == ChangingSurviveRules {
+			sb.WriteString("*")
+		}
+		sb.WriteString("survival rules: ")
+		for _, v := range SRulesBuffer {
+			sb.WriteString(strconv.Itoa(int(v)) + " ")
 
 		}
-		info += "\n"
+		sb.WriteString("\n\n")
 
-		info += fmt.Sprintf("%.2f gen %v", ebiten.ActualFPS(), g.generation)
+		sb.WriteString(fmt.Sprintf("percentage of inital cells alive: %.1f\n", avgStartingLiveCellPercentage))
+		sb.WriteString(fmt.Sprintf("%.2f FPS \ngeneration %v", ebiten.ActualFPS(), g.generation))
 
-		ebitenutil.DebugPrint(screen, info)
-
+		ebitenutil.DebugPrint(screen, sb.String())
+	} else {
+		ebitenutil.DebugPrint(screen, fmt.Sprintf("%.2f FPS \ngeneration %v", ebiten.ActualFPS(), g.generation))
 	}
 }
 
@@ -207,14 +282,18 @@ func (g *Game) Init() {
 			}
 		}
 	}
+
+	g.transparencyOverlay = ebiten.NewImage(g.gridX, g.gridY)
+	g.transparencyOverlay.Fill(color.RGBA{0, 0, 0, 255 * 3 / 4}) // black but not completely opaque
 }
 
 func main() {
+	ebiten.SetFullscreen(false)
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowSize(ebiten.ScreenSizeInFullscreen())
-	ebiten.SetFullscreen(true)
 	ebiten.SetTPS(ebiten.SyncWithFPS)
-	ebiten.SetWindowTitle("go-llca")
 	ebiten.SetFPSMode(ebiten.FPSModeVsyncOffMaximum)
+	ebiten.SetWindowTitle("go-llca")
 	// ebiten.SetFPSMode(ebiten.FPSModeVsyncOn)
 	g := &Game{}
 	g.Init()
@@ -225,13 +304,16 @@ func main() {
 
 // TODO
 // - UI:
-// 	- automaton rule
 // 	- scale
 // 	- fps (capped vs uncapped)
 //  - random density
 // 	- seed
 // 	- hide fps / generation bar
+//  - control info
 
 // space to pause/unpause
 // enter to start a new run with the given settings
 // or maybe enter to finish editing s/b rules, and then a button to start?
+
+// cute idea: CA-based evolution
+// have cells randomly mutate their rules when being born sometimes (?)
