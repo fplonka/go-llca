@@ -21,16 +21,18 @@ import (
 
 // cool ones: 2456/5678, 3456/5678, 456/1234, 45678/2345, 345/4567 @156-165, 36/125, 3/123456, 3/1347
 var (
-	BRules                            = []uint8{3, 5, 6, 7, 8}
-	SRules                            = []uint8{5, 6, 7, 8}
-	BRulesBuffer                      = []uint8{}
-	SRulesBuffer                      = []uint8{}
-	scaleFactor                   int = 2
-	scaleFactorBuffer             int
+	BRules                        = []uint8{3}
+	SRules                        = []uint8{2, 3}
+	BRulesBuffer                  []uint8
+	SRulesBuffer                  []uint8
+	possibleScaleFactors          []int
+	scaleFactor                   int     = 1
+	scaleFactorIndex              int     = 0
 	avgStartingLiveCellPercentage float64 = 50.0 // # out of 100
-	gensToRun                             = 180 * 60
+	gensToRun                             = 100 * 60
 	seed                          int64   = 0
 	uiFont                        font.Face
+	isFpsVisible                  bool = true
 )
 
 const ()
@@ -42,7 +44,7 @@ func init() {
 	copy(BRulesBuffer, BRules)
 	SRulesBuffer = make([]uint8, len(SRules))
 	copy(SRulesBuffer, SRules)
-	scaleFactorBuffer = scaleFactor
+	scaleFactorIndex = scaleFactor
 
 	fontBytes, err := os.ReadFile("JetBrainsMono-Medium.ttf")
 	if err != nil {
@@ -61,6 +63,15 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	possibleScaleFactors = []int{}
+	smallerDimension := int(math.Min(float64(screenX), float64(screenY)))
+	for i := 1; i <= smallerDimension; i++ {
+		if screenX%i == 0 && screenY%i == 0 {
+			possibleScaleFactors = append(possibleScaleFactors, i)
+		}
+	}
+	fmt.Println("possible:", possibleScaleFactors)
 }
 
 func becomesAlive(n uint8) bool {
@@ -147,12 +158,15 @@ func (g *Game) updatePaused() error {
 			avgStartingLiveCellPercentage -= 1.0
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) {
-		scaleFactorBuffer++
+	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) && scaleFactorIndex+1 < len(possibleScaleFactors) {
+		scaleFactorIndex++
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) {
-		scaleFactorBuffer--
+	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) && scaleFactorIndex-1 >= 0 {
+		scaleFactorIndex--
 	}
+
+	avgStartingLiveCellPercentage = math.Max(avgStartingLiveCellPercentage, 0.0)
+	avgStartingLiveCellPercentage = math.Min(avgStartingLiveCellPercentage, 100.0)
 
 	// TOOD: check if 0 is handled correctly in updates
 	nums := []uint8{}
@@ -181,6 +195,17 @@ func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.isPaused = !g.isPaused
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+		if ebiten.IsKeyPressed(ebiten.KeyShift) {
+			if ebiten.FPSMode() == ebiten.FPSModeVsyncOffMaximum {
+				ebiten.SetFPSMode(ebiten.FPSModeVsyncOn)
+			} else {
+				ebiten.SetFPSMode(ebiten.FPSModeVsyncOffMaximum)
+			}
+		} else {
+			isFpsVisible = !isFpsVisible
+		}
+	}
 	if g.isPaused {
 		return g.updatePaused()
 	}
@@ -189,6 +214,7 @@ func (g *Game) Update() error {
 	if g.generation == gensToRun {
 		os.Exit(0)
 	}
+
 	buffer := make([]uint8, (g.gridX+2)*(g.gridY+2))
 	copy(buffer, g.worldGrid)
 	for i := 1; i <= g.gridY; i++ {
@@ -231,7 +257,7 @@ func (g *Game) Restart() {
 	copy(SRules, SRulesBuffer)
 	g.generation = 0
 
-	scaleFactor = scaleFactorBuffer
+	scaleFactor = possibleScaleFactors[scaleFactorIndex]
 	g.Init()
 }
 
@@ -239,8 +265,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	options := &ebiten.DrawImageOptions{}
 	options.GeoM.Scale(float64(scaleFactor), float64(scaleFactor))
 	screen.DrawImage(g.pixels, options)
-
-	fmt.Println(screen.Size())
 
 	if g.isPaused {
 		screen.DrawImage(g.transparencyOverlay, options)
@@ -252,11 +276,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			"scale factor: %v",
 			"%.2f FPS, generation %v",
 			"",
-			"use number keys to modify cell %v rules (press TAB to switch)",
+			"use number keys to modify cell %v rules (press TAB to switch, C to clear)",
 			"use - and + to change initial live cell percentage (hold SHIFT for a smaller increment)",
 			"use [ and ] to change scale factor",
 			"press SPACE to pause/unpause or R to restart with new settings",
-			"press F to toggle FPS visibility"}
+			"press F to toggle FPS visibility and SHIFT+F to toggle FPS cap"}
 
 		infoFormatString := strings.Join(lines, "\n")
 
@@ -282,11 +306,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 
 		infoString := fmt.Sprintf(infoFormatString, birthRulesIndicator, birthRules, survivalRulesIndicator, survivalRules,
-			avgStartingLiveCellPercentage, scaleFactorBuffer, ebiten.ActualFPS(), g.generation, changeType)
+			avgStartingLiveCellPercentage, possibleScaleFactors[scaleFactorIndex], ebiten.ActualFPS(), g.generation, changeType)
 
 		text.Draw(screen, infoString, uiFont, 20, 40, color.White)
-	} else {
-		text.Draw(screen, fmt.Sprintf("%.2f FPS \ngeneration %v", ebiten.ActualFPS(), g.generation), uiFont, 20, 40, color.White)
+	} else if isFpsVisible {
+		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), uiFont, 20, 40, color.White)
 	}
 }
 
@@ -349,18 +373,14 @@ func main() {
 
 // TODO
 // - UI:
-// 	- scale
 // 	- fps (capped vs uncapped)
-//  - random density
 // 	- seed
 // 	- hide fps / generation bar
 //  - control info
 
-// PREVENT NEGATIVE CELL %
+// holding key down to change scale/live%
 
-// space to pause/unpause
-// enter to start a new run with the given settings
-// or maybe enter to finish editing s/b rules, and then a button to start?
+// BOUNDS ON SCALE FACTOR AND CELL PERCENTAGE
 
 // cute idea: CA-based evolution
 // have cells randomly mutate their rules when being born sometimes (?)
