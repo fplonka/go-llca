@@ -12,6 +12,8 @@ import (
 // TODO: make this controllable / less hardcoded somehow
 const seed = 0
 
+type Ruleset [9]bool
+
 type Game struct {
 	// UI state, mostly for pause menu.
 	ui UI
@@ -34,7 +36,7 @@ type Game struct {
 	buffer       []uint8
 	gridX, gridY int
 
-	// Dead cells are black, live cells are white. The size of pixels is like that of the boardbut without the border.
+	// Dead cells are black, live cells are white. The size of pixels is like that of the board but without the border.
 	pixels *ebiten.Image
 
 	// Semi-transparent image to cover and "dim" the simulation image when paused.
@@ -44,8 +46,8 @@ type Game struct {
 	// A dead cell becomes alive iff the number of its living neighbours (out of 8) is in BRules.
 	// A living cell stays alive iff the number of its living neighbours (out of 8) is in SRules
 	// These rules do NOT count a live cell as its own neighbour.
-	BRules []uint8
-	SRules []uint8
+	BRules Ruleset
+	SRules Ruleset
 
 	// The degree to which the game is "zoomed in". For example, with a scale factor of 3, each game board cell is drawn
 	// as a 3x3 square on a fullscreen window. Note that each cell still corresponds to one pixel in pixels.
@@ -58,37 +60,37 @@ type Game struct {
 	isPaused bool
 }
 
-// True iff a cell with the value n becomes alive given these birth rules.
-func becomesAlive(n uint8, BRules []uint8) bool {
-	// Last bit is alive/dead state: if it's 1, cell is already alive.
-	if n&1 == 1 {
-		return false
-	}
-	// n bit shifted to the right by 1 is the number of live neighbors,
-	// so if it's in BRules, the cell becomes alive.
-	for _, v := range BRules {
-		if n>>1 == v {
-			return true
-		}
-	}
-	return false
-}
+// // True iff a cell with the value n becomes alive given these birth rules.
+// func becomesAlive(n uint8, BRules []uint8) bool {
+// 	// Last bit is alive/dead state: if it's 1, cell is already alive.
+// 	if n&1 == 1 {
+// 		return false
+// 	}
+// 	// n bit shifted to the right by 1 is the number of live neighbors,
+// 	// so if it's in BRules, the cell becomes alive.
+// 	for _, v := range BRules {
+// 		if n>>1 == v {
+// 			return true
+// 		}
+// 	}
+// 	return false
+// }
 
-// True iff a cell with the value n becomes dead given these survival rules.
-func becomesDead(n uint8, SRules []uint8) bool {
-	// Last bit is alive/dead state: if it's 0, this cell is already dead.
-	if n&1 == 0 {
-		return false
-	}
-	// n>>1 is the number of live neighbours INCLUDING this cell. We subtract 1 to account for that, since we know that
-	// this cell is alive.
-	for _, v := range SRules {
-		if n>>1-1 == v {
-			return false
-		}
-	}
-	return true
-}
+// // True iff a cell with the value n becomes dead given these survival rules.
+// func becomesDead(n uint8, SRules []uint8) bool {
+// 	// Last bit is alive/dead state: if it's 0, this cell is already dead.
+// 	if n&1 == 0 {
+// 		return false
+// 	}
+// 	// n>>1 is the number of live neighbours INCLUDING this cell. We subtract 1 to account for that, since we know that
+// 	// this cell is alive.
+// 	for _, v := range SRules {
+// 		if n>>1-1 == v {
+// 			return false
+// 		}
+// 	}
+// 	return true
+// }
 
 func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
@@ -113,11 +115,12 @@ func (g *Game) Update() error {
 	for i := 1; i <= g.gridY; i++ {
 		for j := 1; j <= g.gridX; j++ {
 			ind := i*(g.gridX+2) + j
-			if g.worldGrid[ind] == 0 {
-				continue
-			}
+			// if g.worldGrid[ind] == 0 {
+			// 	continue
+			// }
 			val := g.worldGrid[ind]
-			if becomesAlive(val, g.BRules) { // cell becomes alive
+			if val&1 == 0 && g.BRules[val>>1] {
+				// if becomesAlive(val, g.BRules) { // cell becomes alive
 				g.buffer[ind] |= 1
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
@@ -125,7 +128,8 @@ func (g *Game) Update() error {
 					}
 				}
 				g.pixels.Set(j-1, i-1, color.White)
-			} else if becomesDead(val, g.SRules) { // cell dies
+				// } else if becomesDead(val, g.SRules) { // cell dies
+			} else if val&1 == 1 && !g.SRules[val>>1-1] {
 				g.buffer[ind] -= 1
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
@@ -144,10 +148,9 @@ func (g *Game) Update() error {
 
 func (g *Game) Restart() {
 	// Change the rules, scale factor and initial live cell percentage to the ones selected in the UI.
-	g.BRules = make([]uint8, len(g.ui.selectedBRules))
-	copy(g.BRules, g.ui.selectedBRules)
-	g.SRules = make([]uint8, len(g.ui.selectedSRules))
-	copy(g.SRules, g.ui.selectedSRules)
+	g.BRules = g.ui.selectedBRules
+	g.SRules = g.ui.selectedSRules
+
 	g.scaleFactor = g.ui.getScaleFactor()
 	g.avgStartingLiveCellPercentage = g.ui.selectedLiveCellPercent
 
@@ -177,15 +180,19 @@ func (g *Game) initializeState() {
 	rand.New(rand.NewSource(seed))
 
 	// Initial rule set is just Conway's Game of Life.
-	g.BRules = []uint8{3}
-	g.SRules = []uint8{2, 3}
+	g.BRules = [9]bool{}
+	g.BRules[3] = true
+
+	g.SRules = [9]bool{}
+	g.SRules[2] = true
+	g.SRules[3] = true
 
 	g.avgStartingLiveCellPercentage = 50.0
 
 	g.isPaused = false
 
-	// Start the simulation at the second smallest scale factor, i.e. slightly zoomed in.
-	// For most screen resolutions this will be a 2x zoom (since both screen height and width are usually even).
+	// Start the simulation at the second smallest scale factor, i.e. slightly zoomed in. For most screen resolutions
+	// this will be a 2x zoom (since both screen height and width are usually even).
 	initialScaleIndex := 1
 
 	// Initialize UI, get the chosen scale factor from it.
@@ -196,8 +203,8 @@ func (g *Game) initializeState() {
 	g.gridX = x / g.scaleFactor
 	g.gridY = y / g.scaleFactor
 
-	// The transparency overlay has a constant size corresponding to the max screen size, so that we can
-	// always use this same overlay instead of creating new ones when the scale factors changes.
+	// The transparency overlay has a constant size corresponding to the max screen size, so that we can always use this
+	// same overlay instead of creating new ones when the scale factors changes.
 	g.transparencyOverlay = ebiten.NewImage(x, y)
 	g.transparencyOverlay.Fill(color.RGBA{0, 0, 0, 255 * 3 / 4}) // black but not completely opaque
 }

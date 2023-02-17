@@ -6,14 +6,12 @@ import (
 	"log"
 	"math"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
-	"golang.org/x/exp/slices"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 )
@@ -31,11 +29,11 @@ const (
 
 type UI struct {
 	// Current state of the rules being edited in the pause menu.
-	selectedBRules []uint8
-	selectedSRules []uint8
+	selectedBRules Ruleset
+	selectedSRules Ruleset
 
 	// Pointer to either selectedBRules or selectedSRules, depending on which is being edited.
-	rulesBeingChanged *[]uint8
+	rulesBeingChanged *Ruleset
 
 	selectedLiveCellPercent float64
 
@@ -51,14 +49,12 @@ type UI struct {
 	uiFont font.Face
 }
 
-func (ui *UI) initialize(BRules, SRules []uint8, liveCellPercent float64, initialScaleIndex int) {
+func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initialScaleIndex int) {
 	// Needs BRules and SRules to make the initial rule buffers match the "default" rules of the simulation which shows
 	// when you start the program and haven't changed anything yet. Same for the initial live cell percentage and scale
 	// factor index.
-	ui.selectedBRules = make([]uint8, len(BRules))
-	copy(ui.selectedBRules, BRules)
-	ui.selectedSRules = make([]uint8, len(SRules))
-	copy(ui.selectedSRules, SRules)
+	ui.selectedBRules = BRules
+	ui.selectedSRules = SRules
 	ui.selectedLiveCellPercent = liveCellPercent
 
 	ui.rulesBeingChanged = &ui.selectedBRules
@@ -121,9 +117,9 @@ func (ui *UI) handleInput(isGamePaused bool) {
 	// Clear selected rules on C press.
 	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
 		if ui.rulesBeingChanged == &ui.selectedBRules {
-			ui.selectedBRules = []uint8{}
+			ui.selectedBRules = Ruleset{}
 		} else {
-			ui.selectedSRules = []uint8{}
+			ui.selectedSRules = Ruleset{}
 		}
 	}
 
@@ -154,39 +150,22 @@ func (ui *UI) handleInput(isGamePaused bool) {
 	// Clamp live cell percentage and scale factor index to legal values
 	ui.selectedLiveCellPercent = clamp(0.0, 100.0, ui.selectedLiveCellPercent)
 	ui.scaleFactorIndex = clamp(0, len(ui.possibleScaleFactors)-1, ui.scaleFactorIndex)
-
-	// Sort the rule sets to ensure they're always presented in order.
-	sort.Slice(ui.selectedBRules, func(i, j int) bool { return ui.selectedBRules[i] < ui.selectedBRules[j] })
-	sort.Slice(ui.selectedSRules, func(i, j int) bool { return ui.selectedSRules[i] < ui.selectedSRules[j] })
 }
 
 func (ui *UI) handleNumberKeys() {
 	// Figure out which number key is being pressed. Handles the possibility of multiple at once, which is possible but
 	// rare.
 	nums := []uint8{}
-	keys := []ebiten.Key{ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8}
+	keys := []ebiten.Key{ebiten.Key0, ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8}
 	for _, key := range keys {
 		if inpututil.IsKeyJustPressed(key) {
 			nums = append(nums, uint8(int(key)-int(ebiten.Key0)))
 		}
 	}
 
-	// The new rule set values are those which are in the rule set or are having their number key pressed BUT NOT BOTH.
-	// So if the rule set contained 3 and 3 was pressed, 3 is removed. If 3 had not been in the rule set, it would have
-	// been added.
-	newRules := []uint8{}
-	all := []uint8{}
-	all = append(all, nums...)
-	all = append(all, *ui.rulesBeingChanged...)
-	for _, v := range all {
-		// add only those nums which appear in exactly one of the two slices
-		if slices.Contains(*ui.rulesBeingChanged, v) != slices.Contains(nums, v) {
-			newRules = append(newRules, v)
-		}
+	for _, num := range nums {
+		(*ui.rulesBeingChanged)[num] = !(*ui.rulesBeingChanged)[num]
 	}
-
-	*ui.rulesBeingChanged = make([]uint8, len(newRules))
-	copy(*ui.rulesBeingChanged, newRules)
 }
 
 func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
@@ -222,12 +201,14 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 
 		// Concatenate the rule sets into strings.
 		birthRules := ""
-		for _, v := range ui.selectedBRules {
-			birthRules += strconv.Itoa(int(v)) + " "
-		}
 		survivalRules := ""
-		for _, v := range ui.selectedSRules {
-			survivalRules += strconv.Itoa(int(v)) + " "
+		for i := 0; i <= 8; i++ {
+			if ui.selectedBRules[i] {
+				birthRules += strconv.Itoa(int(i)) + " "
+			}
+			if ui.selectedSRules[i] {
+				survivalRules += strconv.Itoa(int(i)) + " "
+			}
 		}
 
 		// Make a string showing the selected board resolution.
@@ -287,3 +268,5 @@ func clamp[T int | float64](min, max, a T) T {
 	}
 	return a
 }
+
+// TODO: rename ui.uiFont lol
