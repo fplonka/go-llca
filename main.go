@@ -12,6 +12,7 @@ import (
 // TODO: make this controllable / less hardcoded somehow
 const seed = 0
 
+// The value at index i corresponds to the birth/survival rule for when i neighbours are alive.
 type Ruleset [9]bool
 
 type Game struct {
@@ -59,38 +60,6 @@ type Game struct {
 	// When paused, the simulation doesn't run and a settings change UI is displayed.
 	isPaused bool
 }
-
-// // True iff a cell with the value n becomes alive given these birth rules.
-// func becomesAlive(n uint8, BRules []uint8) bool {
-// 	// Last bit is alive/dead state: if it's 1, cell is already alive.
-// 	if n&1 == 1 {
-// 		return false
-// 	}
-// 	// n bit shifted to the right by 1 is the number of live neighbors,
-// 	// so if it's in BRules, the cell becomes alive.
-// 	for _, v := range BRules {
-// 		if n>>1 == v {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }
-
-// // True iff a cell with the value n becomes dead given these survival rules.
-// func becomesDead(n uint8, SRules []uint8) bool {
-// 	// Last bit is alive/dead state: if it's 0, this cell is already dead.
-// 	if n&1 == 0 {
-// 		return false
-// 	}
-// 	// n>>1 is the number of live neighbours INCLUDING this cell. We subtract 1 to account for that, since we know that
-// 	// this cell is alive.
-// 	for _, v := range SRules {
-// 		if n>>1-1 == v {
-// 			return false
-// 		}
-// 	}
-// 	return true
-// }
 
 func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
@@ -180,10 +149,10 @@ func (g *Game) initializeState() {
 	rand.New(rand.NewSource(seed))
 
 	// Initial rule set is just Conway's Game of Life.
-	g.BRules = [9]bool{}
+	g.BRules = Ruleset{}
 	g.BRules[3] = true
 
-	g.SRules = [9]bool{}
+	g.SRules = Ruleset{}
 	g.SRules[2] = true
 	g.SRules[3] = true
 
@@ -257,8 +226,6 @@ func main() {
 
 // FINISH COMMENTING STUFF
 // go over TODO points and do something about them
-
-// TODO: rules should OBVIOUSLY be bool arrays. Ugh.
 
 // cute idea: CA-based evolution
 // have cells randomly mutate their rules when being born sometimes (?)
