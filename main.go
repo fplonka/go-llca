@@ -62,6 +62,7 @@ type Game struct {
 }
 
 func (g *Game) Update() error {
+	// Handle input not handled by the pause menu UI.
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		g.Restart()
 	}
@@ -75,31 +76,44 @@ func (g *Game) Update() error {
 			ebiten.SetFPSMode(ebiten.FPSModeVsyncOffMaximum)
 		}
 	}
+
 	g.ui.handleInput(g.isPaused)
+
 	if g.isPaused {
 		return nil
 	}
 
+	// Update the game board.
+	// We do this more efficiently by copying the board state into a buffer and modifying only those cells in the buffer
+	// which are changing state (becoming alive or dying).
 	copy(g.buffer, g.worldGrid)
 	for i := 1; i <= g.gridY; i++ {
 		for j := 1; j <= g.gridX; j++ {
+			// Getting the "2D g.worldGrid[i][j]" index from the 1D slice. +2 because of the board edge border.
 			ind := i*(g.gridX+2) + j
-			// if g.worldGrid[ind] == 0 {
-			// 	continue
-			// }
 			val := g.worldGrid[ind]
-			if val&1 == 0 && g.BRules[val>>1] {
-				// if becomesAlive(val, g.BRules) { // cell becomes alive
-				g.buffer[ind] |= 1
+
+			if val&1 == 0 && g.BRules[val>>1] { // Checking if the cell is becoming alive. val&1 == 0 ensures that this
+				// cell was dead previously, and val>>1 gets the number of live neighbours.
+
+				g.buffer[ind] |= 1 // Set the last bit to 1 to indicate that this cell is now alive.
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
+						// Update all the neighbours and also this cell. Adding 2 adds to the bit-shifted
+						// neighbour-count part of the value.
 						g.buffer[(i+a)*(g.gridX+2)+j+b] += 2
+
 					}
 				}
+				// -1 because i and j and 1-indexed due to the border, which the game board image doesn't have.
 				g.pixels.Set(j-1, i-1, color.White)
-				// } else if becomesDead(val, g.SRules) { // cell dies
-			} else if val&1 == 1 && !g.SRules[val>>1-1] {
-				g.buffer[ind] -= 1
+
+			} else if val&1 == 1 && !g.SRules[val>>1-1] { // Checking if the cell is becoming dead. val&1 == 1 ensures
+				// that this cell was alive previously. Since this cell is alive, val>>1 is the one more than the number
+				// of live neighbours, as this cell is also counted in val>1, so we check val>>1-1 in SRules.
+
+				// The rest of this case is analogous to the cell becoming alive case.
+				g.buffer[ind] -= 1 // Set the last bit to 0 to indicate that this cell is now dead.
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
 						g.buffer[(i+a)*(g.gridX+2)+j+b] -= 2
@@ -110,6 +124,8 @@ func (g *Game) Update() error {
 
 		}
 	}
+	// Make the buffer making our changes in the new world grid. We can't do the changes in place, using only one board,
+	// since if we change a cell's state, that will effect how the neighbouring cells will get updated.
 	copy(g.worldGrid, g.buffer)
 
 	return nil
@@ -128,22 +144,26 @@ func (g *Game) Restart() {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
+	// Draw the game board image in (0, 0) and scaling by the scale factor to fill the whole screen.
 	options := &ebiten.DrawImageOptions{}
 	options.GeoM.Scale(float64(g.scaleFactor), float64(g.scaleFactor))
 	screen.DrawImage(g.pixels, options)
 
+	// To dim the simulation in the background so that the pause menu UI is visible.
 	if g.isPaused {
 		screen.DrawImage(g.transparencyOverlay, nil)
 	}
 
+	// Draw UI text elements.
 	g.ui.Draw(screen, g.isPaused)
 }
 
+// Returns the size of the screen we want to be rendering to.
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return ebiten.ScreenSizeInFullscreen()
 }
 
-// Initializes the initial simulation state. Called only once, before ebiten.runGame(g)
+// Initializes the initial simulation state. Called only once, before ebiten.runGame(g).
 func (g *Game) initializeState() {
 	// Currently seed is always 0, kind of redundant.
 	rand.New(rand.NewSource(seed))
@@ -151,7 +171,6 @@ func (g *Game) initializeState() {
 	// Initial rule set is just Conway's Game of Life.
 	g.BRules = Ruleset{}
 	g.BRules[3] = true
-
 	g.SRules = Ruleset{}
 	g.SRules[2] = true
 	g.SRules[3] = true
@@ -178,6 +197,8 @@ func (g *Game) initializeState() {
 	g.transparencyOverlay.Fill(color.RGBA{0, 0, 0, 255 * 3 / 4}) // black but not completely opaque
 }
 
+// Initializes the simulation board, filling it with cells randomly, and creates the corresponding initial simulation
+// image. The chance of a given cell being set to alive is given by g.avgStartingLiveCellPercentage.
 func (g *Game) initializeBoard() {
 	x, y := ebiten.ScreenSizeInFullscreen()
 	g.gridX = x / g.scaleFactor
@@ -189,14 +210,13 @@ func (g *Game) initializeBoard() {
 	g.buffer = make([]uint8, (g.gridX+2)*(g.gridY+2))
 	for i := 1; i <= g.gridY; i++ {
 		for j := 1; j <= g.gridX; j++ {
-			if rand.Intn(100000) < int(1000*g.avgStartingLiveCellPercentage) {
+			if rand.Intn(100000) < int(1000*g.avgStartingLiveCellPercentage) { // Cell becomes alive.
 				g.worldGrid[i*(g.gridX+2)+j] |= 1
 				g.pixels.Set(j-1, i-1, color.White)
+				// Update live neighbour counts in the cells affected by this cell becoming alive.
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
-						if i+a >= 1 && i+a <= g.gridY && j+b >= 1 && j+b <= g.gridX {
-							g.worldGrid[(i+a)*(g.gridX+2)+j+b] += 2
-						}
+						g.worldGrid[(i+a)*(g.gridX+2)+j+b] += 2
 					}
 				}
 			}
@@ -205,27 +225,23 @@ func (g *Game) initializeBoard() {
 }
 
 func main() {
-	ebiten.SetFullscreen(false)
+	// Set the right window properties. Should give pixel perfect image in fullscreen.
+	ebiten.SetFullscreen(true)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowSize(ebiten.ScreenSizeInFullscreen())
+
+	// By default, update and render as fast as possible. Currently this makes the simulation speed "pulsate" slightly,
+	// maybe because of GC activity?
 	ebiten.SetTPS(ebiten.SyncWithFPS)
 	ebiten.SetFPSMode(ebiten.FPSModeVsyncOffMaximum)
+
 	ebiten.SetWindowTitle("go-llca")
+
 	g := &Game{}
-	g.initializeState()
+	g.initializeState() // Only called here.
 	g.initializeBoard()
+
 	if err := ebiten.RunGame(g); err != nil {
 		log.Fatal(err)
 	}
 }
-
-// TODO:
-// holding key down to change scale/live%
-// save the given parameter config to a file
-// save a given run to a .gif or .mp4
-
-// FINISH COMMENTING STUFF
-// go over TODO points and do something about them
-
-// cute idea: CA-based evolution
-// have cells randomly mutate their rules when being born sometimes (?)

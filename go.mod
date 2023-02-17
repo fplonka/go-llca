@@ -1,4 +1,4 @@
-module go-llca
+module github.com/fplonka/go-llca
 
 go 1.20
 
