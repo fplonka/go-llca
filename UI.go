@@ -3,9 +3,10 @@ package main
 import (
 	"fmt"
 	"image/color"
+	"io"
 	"log"
 	"math"
-	"os"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -17,7 +18,7 @@ import (
 )
 
 const (
-	FONT_PATH = "fonts/JetBrainsMono-Medium.ttf"
+	FONT_PATH = "https://github.com/JetBrains/JetBrainsMono/raw/master/fonts/ttf/JetBrainsMono-Medium.ttf"
 	FONT_SIZE = 12
 
 	// How many pixels away from the edge of the screen to draw UI elements.
@@ -74,9 +75,15 @@ func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initia
 	ui.uiFont = loadFontFace(FONT_PATH)
 }
 
-// Loads a font face from a .ttf font file.
+// Loads a font face from a remote .ttf file.
 func loadFontFace(path string) font.Face {
-	fontBytes, err := os.ReadFile(path)
+	resp, err := http.Get(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fontBytes, err := io.ReadAll(resp.Body)
+
 	if err != nil {
 		log.Fatal(err)
 	}
