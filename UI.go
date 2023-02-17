@@ -20,7 +20,8 @@ import (
 
 const (
 	FONT_PATH = "fonts/JetBrainsMono-Medium.ttf"
-	FONT_SIZE = 11
+	FONT_SIZE = 12
+	MARGIN    = 20
 )
 
 type UI struct {
@@ -98,10 +99,10 @@ func loadFontFace(path string) font.Face {
 
 func (ui *UI) handleInput(isGamePaused bool) {
 	// If the simulation is running, then the only UI-related input to handle is FPS visibility.
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+		ui.isFpsVisible = !ui.isFpsVisible
+	}
 	if !isGamePaused {
-		if inpututil.IsKeyJustPressed(ebiten.KeyF) {
-			ui.isFpsVisible = !ui.isFpsVisible
-		}
 		return
 	}
 
@@ -186,22 +187,16 @@ func (ui *UI) handleNumberKeys() {
 }
 
 func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
-	if !isGamePaused {
-		if ui.isFpsVisible {
-			text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.uiFont, 20, 40, color.White)
-		}
-	} else {
-
+	if isGamePaused {
 		lines := []string{
 			"%vbirth rules: %v",
 			"%vsurvival rules: %v",
 			"inital percentage of live cells: %.1f",
-			"scale factor: %v",
-			"%.2f FPS, generation %v",
+			"board resolution: %v (%vx zoom)",
 			"",
 			"use number keys to modify cell %v rules (press TAB to switch, C to clear)",
-			"use - and + to change initial live cell percentage (hold SHIFT for a smaller increment or CTRL for the smallest)",
-			"use [ and ] to change scale factor",
+			"use - and + to change initial live cell percentage (hold SHIFT/CTRL for smaller/smallest increment)",
+			"use [ and ] to change resolution",
 			"press F to toggle FPS visibility and SHIFT+F to toggle FPS cap",
 			"",
 			"press SPACE to pause/unpause or R to restart with new settings"}
@@ -229,11 +224,36 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 			survivalRules += strconv.Itoa(int(v)) + " "
 		}
 
-		infoString := fmt.Sprintf(infoFormatString, birthRulesIndicator, birthRules, survivalRulesIndicator, survivalRules,
-			ui.selectedLiveCellPercent, ui.getScaleFactor(), ebiten.ActualFPS(), "GENERATION ???", changeType)
+		screenX, screenY := ebiten.ScreenSizeInFullscreen()
+		scaleFactor := ui.getScaleFactor()
+		resolution := fmt.Sprintf("%vx%v", screenX/scaleFactor, screenY/scaleFactor)
 
-		text.Draw(screen, infoString, ui.uiFont, 20, 40, color.White)
+		infoString := fmt.Sprintf(infoFormatString, birthRulesIndicator, birthRules, survivalRulesIndicator, survivalRules,
+			ui.selectedLiveCellPercent, resolution, ui.getScaleFactor(), changeType)
+
+		boundsFirstLine := text.BoundString(ui.uiFont, lines[0])
+		boundsAllLines := text.BoundString(ui.uiFont, infoString)
+
+		infoX := MARGIN
+		infoY := screenY - boundsAllLines.Dy() - MARGIN + boundsFirstLine.Dy()
+
+		text.Draw(screen, infoString, ui.uiFont, infoX, infoY, color.White)
 	}
+
+	if ui.isFpsVisible {
+		// Draw first with black to get a slight "shadow" which helps with readability
+
+		fpsString := fmt.Sprintf("%.2f FPS", ebiten.ActualFPS())
+		bounds := text.BoundString(ui.uiFont, fpsString)
+
+		screenX, _ := screen.Size()
+		fpsX := screenX - bounds.Dx() - MARGIN
+		fpsY := bounds.Dy() + MARGIN
+
+		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.uiFont, fpsX, fpsY, color.Black)
+		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.uiFont, fpsX, fpsY, color.White)
+	}
+
 }
 
 func (ui *UI) getScaleFactor() int {

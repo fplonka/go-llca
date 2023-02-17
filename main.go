@@ -250,5 +250,11 @@ func main() {
 // save the given parameter config to a file
 // save a given run to a .gif or .mp4
 
+// FINISH COMMENTING STUFF
+// go over TODO points and do something about them
+// MAKE FPS LOWER LEFT / UPPER RIGHT
+// 		also potentially give it an opaque background
+// show RESOLUTION instead of scale factor in UI
+
 // cute idea: CA-based evolution
 // have cells randomly mutate their rules when being born sometimes (?)
