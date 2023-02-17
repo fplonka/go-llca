@@ -17,27 +17,24 @@ type Game struct {
 	ui UI
 
 	// Grid state.
-	// Each uint8 value represents both the state of the cell at that position (dead or alive)
-	// and the number of living neighbours (from 0 to 9) of that cells.
+	// Each uint8 value represents both the state of the cell at that position (dead or alive) and the number of living
+	// neighbours (from 0 to 9) of that cells.
 	//
 	// The last bit is 0 if the cell is dead and 1 if the cell is alive.
-	// The other bits (i.e. all except the last) represent the number of living neighbours. This
-	// means that  val >> 1 is the live neighbour count and val & 1 is the cell dead/alive state.
-	//
-	// This number of live neigbours INCLUDES that cell if it is alive, so a cell can have
-	// up to 9 live "neighbours". This lets us update the board state slightly more efficiently.
+	// The other bits (value>>1, i.e. all except the last) represent the number of living neighbours. This number of
+	// live neigbours INCLUDES that cell if it is alive, so a cell can have up to 9 live "neighbours". This lets us
+	// update the board state slightly more efficiently.
 	//
 	//
-	// The worldGrid slice is implicitly two dimensional. There is a one cell border around the grid
-	// filled with cells which are always dead. This allows us to skip index out of bounds checks.
+	// The worldGrid slice is implicitly two dimensional. There is a one cell border around the grid filled with cells
+	// which are always dead. This allows us to skip index out of bounds checks.
 	//
 	// The grid size is dependent on the scale factor.
 	worldGrid    []uint8
 	buffer       []uint8
 	gridX, gridY int
 
-	// Dead cells are black, live cells are white. The size of pixels is like that of the board
-	// but without the border.
+	// Dead cells are black, live cells are white. The size of pixels is like that of the boardbut without the border.
 	pixels *ebiten.Image
 
 	// Semi-transparent image to cover and "dim" the simulation image when paused.
@@ -50,9 +47,8 @@ type Game struct {
 	BRules []uint8
 	SRules []uint8
 
-	// The degree to which the game is "zoomed in". For example, with a scale factor of 3, each
-	// game board cell is drawn as a 3x3 square on a fullscreen window. Note that each cell still
-	// corresponds to one pixel in pixels.
+	// The degree to which the game is "zoomed in". For example, with a scale factor of 3, each game board cell is drawn
+	// as a 3x3 square on a fullscreen window. Note that each cell still corresponds to one pixel in pixels.
 	scaleFactor int
 
 	// The percent (0.0 to 100.0) chance any given board cell will initialize as alive.
@@ -62,7 +58,7 @@ type Game struct {
 	isPaused bool
 }
 
-// True iff a cell with this value becomes alive given these birth rules.
+// True iff a cell with the value n becomes alive given these birth rules.
 func becomesAlive(n uint8, BRules []uint8) bool {
 	// Last bit is alive/dead state: if it's 1, cell is already alive.
 	if n&1 == 1 {
@@ -78,14 +74,14 @@ func becomesAlive(n uint8, BRules []uint8) bool {
 	return false
 }
 
-// True iff a cell with this value becomes dead given these survival rules.
+// True iff a cell with the value n becomes dead given these survival rules.
 func becomesDead(n uint8, SRules []uint8) bool {
 	// Last bit is alive/dead state: if it's 0, this cell is already dead.
 	if n&1 == 0 {
 		return false
 	}
-	// n>>1 is the number of live neighbours INCLUDING this cell. We subtract 1 to
-	// account for that, since we know that this cell is alive.
+	// n>>1 is the number of live neighbours INCLUDING this cell. We subtract 1 to account for that, since we know that
+	// this cell is alive.
 	for _, v := range SRules {
 		if n>>1-1 == v {
 			return false
@@ -254,6 +250,8 @@ func main() {
 
 // FINISH COMMENTING STUFF
 // go over TODO points and do something about them
+
+// TODO: rules should OBVIOUSLY be bool arrays. Ugh.
 
 // cute idea: CA-based evolution
 // have cells randomly mutate their rules when being born sometimes (?)

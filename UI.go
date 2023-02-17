@@ -19,9 +19,13 @@ import (
 )
 
 const (
-	FONT_PATH     = "fonts/JetBrainsMono-Medium.ttf"
-	FONT_SIZE     = 13
-	MARGIN        = 20
+	FONT_PATH = "fonts/JetBrainsMono-Medium.ttf"
+	FONT_SIZE = 12
+
+	// How many pixels away from the edge of the screen to draw UI elements.
+	MARGIN = 20
+
+	// How many pixels to offset the black shadow text from the white foreground text.
 	SHADOW_OFFSET = 2
 )
 
@@ -48,8 +52,9 @@ type UI struct {
 }
 
 func (ui *UI) initialize(BRules, SRules []uint8, liveCellPercent float64, initialScaleIndex int) {
-	// Needs BRules and SRules to make the initial rule buffers match the "default" rules of the simulation
-	// which shows when you start the program and haven't changed anything yet. Same for the initial live cell percentage.
+	// Needs BRules and SRules to make the initial rule buffers match the "default" rules of the simulation which shows
+	// when you start the program and haven't changed anything yet. Same for the initial live cell percentage and scale
+	// factor index.
 	ui.selectedBRules = make([]uint8, len(BRules))
 	copy(ui.selectedBRules, BRules)
 	ui.selectedSRules = make([]uint8, len(SRules))
@@ -69,9 +74,6 @@ func (ui *UI) initialize(BRules, SRules []uint8, liveCellPercent float64, initia
 			ui.possibleScaleFactors = append(ui.possibleScaleFactors, i)
 		}
 	}
-
-	// Make the transparency overlay a black, semi-transparent rectangle. This is to "dim" the paused simulation
-	// when looking at the pause menu.
 
 	ui.uiFont = loadFontFace(FONT_PATH)
 }
@@ -125,9 +127,8 @@ func (ui *UI) handleInput(isGamePaused bool) {
 		}
 	}
 
-	// Change initial live cell percentage value, adjusting the increment if
-	// SHIFT or CONTROL are pressed to allow for finer control.
-	// Ideally this would be done with a GUI but that's nontrivial in Ebiten.
+	// Change initial live cell percentage value, adjusting the increment if SHIFT or CONTROL are pressed to allow for
+	// finer control. Ideally this would be done with a GUI but that's nontrivial in Ebiten.
 	delta := 10.0
 	if ebiten.IsKeyPressed(ebiten.KeyShift) {
 		delta = 1.0
@@ -159,9 +160,9 @@ func (ui *UI) handleInput(isGamePaused bool) {
 	sort.Slice(ui.selectedSRules, func(i, j int) bool { return ui.selectedSRules[i] < ui.selectedSRules[j] })
 }
 
-// CURRENTLY BORKEN
 func (ui *UI) handleNumberKeys() {
-	// Figure out which number key is being pressed. Handles the possibility of multiple at once, which is possible but rare.
+	// Figure out which number key is being pressed. Handles the possibility of multiple at once, which is possible but
+	// rare.
 	nums := []uint8{}
 	keys := []ebiten.Key{ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8}
 	for _, key := range keys {
@@ -171,7 +172,8 @@ func (ui *UI) handleNumberKeys() {
 	}
 
 	// The new rule set values are those which are in the rule set or are having their number key pressed BUT NOT BOTH.
-	// So if the rule set contained 3 and 3 was pressed, 3 is removed. If 3 had not been in the rule set, it would have been added.
+	// So if the rule set contained 3 and 3 was pressed, 3 is removed. If 3 had not been in the rule set, it would have
+	// been added.
 	newRules := []uint8{}
 	all := []uint8{}
 	all = append(all, nums...)
@@ -204,11 +206,13 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 
 		infoFormatString := strings.Join(lines, "\n")
 
+		// Says whether we're editing the birth or survival rules.
 		changeType := "BIRTH"
 		if ui.rulesBeingChanged == &ui.selectedSRules {
 			changeType = "SURVIVAL"
 		}
 
+		// Show a * in front of the rules which are being edited.
 		birthRulesIndicator := "*"
 		survivalRulesIndicator := ""
 		if ui.rulesBeingChanged == &ui.selectedSRules {
@@ -216,6 +220,7 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 			survivalRulesIndicator = "*"
 		}
 
+		// Concatenate the rule sets into strings.
 		birthRules := ""
 		for _, v := range ui.selectedBRules {
 			birthRules += strconv.Itoa(int(v)) + " "
@@ -225,33 +230,37 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 			survivalRules += strconv.Itoa(int(v)) + " "
 		}
 
+		// Make a string showing the selected board resolution.
 		screenX, screenY := ebiten.ScreenSizeInFullscreen()
 		scaleFactor := ui.getScaleFactor()
 		resolution := fmt.Sprintf("%vx%v", screenX/scaleFactor, screenY/scaleFactor)
 
+		// The pause menu UI is just this one formatted string.
 		infoString := fmt.Sprintf(infoFormatString, birthRulesIndicator, birthRules, survivalRulesIndicator, survivalRules,
 			ui.selectedLiveCellPercent, resolution, ui.getScaleFactor(), changeType)
 
+		// Because text.Draw() is weird about positioning, we use the height of the first line to offset the y position
+		// of the UI text.
 		boundsFirstLine := text.BoundString(ui.uiFont, lines[0])
 		boundsAllLines := text.BoundString(ui.uiFont, infoString)
-
 		infoX := MARGIN
 		infoY := screenY - boundsAllLines.Dy() - MARGIN + boundsFirstLine.Dy()
 
+		// Draw first with black to get a slight "shadow" which helps with readability.
 		text.Draw(screen, infoString, ui.uiFont, infoX+SHADOW_OFFSET, infoY+SHADOW_OFFSET, color.Black)
 		text.Draw(screen, infoString, ui.uiFont, infoX, infoY, color.White)
 	}
 
 	if ui.isFpsVisible {
-		// Draw first with black to get a slight "shadow" which helps with readability
-
 		fpsString := fmt.Sprintf("%.2f FPS", ebiten.ActualFPS())
 		bounds := text.BoundString(ui.uiFont, fpsString)
 
+		// This could also use ebiten.ScreenSizeInFullscreen(); TODO: standardize this with a method in main.
 		screenX, _ := screen.Size()
 		fpsX := screenX - bounds.Dx() - MARGIN
 		fpsY := bounds.Dy() + MARGIN
 
+		// Draw first with black to get a slight "shadow" which helps with readability.
 		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.uiFont, fpsX+SHADOW_OFFSET, fpsY+SHADOW_OFFSET, color.Black)
 		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.uiFont, fpsX, fpsY, color.White)
 	}
