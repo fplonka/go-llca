@@ -1,76 +1,66 @@
 package main
 
 import (
-	"fmt"
 	"image/color"
 	"log"
-	"math"
 	"math/rand"
 	"os"
-	"sort"
-	"strconv"
-	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
-	"github.com/hajimehoshi/ebiten/v2/text"
-	"golang.org/x/exp/slices"
-	"golang.org/x/image/font"
-	"golang.org/x/image/font/opentype"
 )
 
-// cool ones: 2456/5678, 3456/5678, 456/1234, 45678/2345, 345/4567 @156-165, 36/125, 3/123456, 3/1347
-var (
-	BRules                        = []uint8{3}
-	SRules                        = []uint8{2, 3}
-	BRulesBuffer                  []uint8
-	SRulesBuffer                  []uint8
-	possibleScaleFactors          []int
-	scaleFactor                   int     = 1
-	scaleFactorIndex              int     = 0
-	avgStartingLiveCellPercentage float64 = 50.0 // # out of 100
-	gensToRun                             = 100 * 60
-	seed                          int64   = 0
-	uiFont                        font.Face
-	isFpsVisible                  bool = true
-)
+// TODO: make this controllable / less hardcoded somehow
+const seed = 0
 
-func init() {
-	rand.New(rand.NewSource(seed))
+type Game struct {
+	// UI state, mostly for pause menu.
+	ui UI
 
-	BRulesBuffer = make([]uint8, len(BRules))
-	copy(BRulesBuffer, BRules)
-	SRulesBuffer = make([]uint8, len(SRules))
-	copy(SRulesBuffer, SRules)
+	// Grid state.
+	// Each uint8 value represents both the state of the cell at that position (dead or alive)
+	// and the number of living neighbours (from 0 to 8) of that cells.
+	//
+	// The last bit is 0 if the cell is dead and 1 if the cell is alive.
+	// The other bits (i.e. all except the last) represent the number of living neighbours. This
+	// means that  val >> 1 is the live neighbour count and val & 1 is the cell dead/alive state.
+	//
+	// The worldGrid slice is implicitly two dimensional. There is a one cell border around the grid
+	// filled with cells which are always dead. This allows us to skip index out of bounds checks.
+	//
+	// The grid size is dependent on the scale factor.
+	worldGrid    []uint8
+	buffer       []uint8
+	gridX, gridY int
 
-	fontBytes, err := os.ReadFile("fonts/JetBrainsMono-Medium.ttf")
-	if err != nil {
-		log.Fatal(err)
-	}
-	tt, err := opentype.Parse(fontBytes)
-	if err != nil {
-		log.Fatal(err)
-	}
-	screenX, screenY := ebiten.ScreenSizeInFullscreen()
-	uiFont, err = opentype.NewFace(tt, &opentype.FaceOptions{
-		Size:    11,
-		DPI:     math.Sqrt(float64(screenX*screenY) / 100),
-		Hinting: font.HintingFull,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
+	// Dead cells are black, live cells are white. The size of pixels is like that of the board
+	// but without the border.
+	pixels *ebiten.Image
 
-	possibleScaleFactors = []int{}
-	smallerDimension := int(math.Min(float64(screenX), float64(screenY)))
-	for i := 1; i <= smallerDimension; i++ {
-		if screenX%i == 0 && screenY%i == 0 {
-			possibleScaleFactors = append(possibleScaleFactors, i)
-		}
-	}
+	// Semi-transparent image to cover and "dim" the simulation image when paused.
+	transparencyOverlay *ebiten.Image
+
+	// Game rules.
+	// A dead cell becomes alive iff the number of its living neighbours (out of 8) is in BRules.
+	// A living cell stays alive iff the number of its living neighbours (out of 8) is in SRules
+	BRules []uint8
+	SRules []uint8
+
+	// The degree to which the game is "zoomed in". For example, with a scale factor of 3, each
+	// game board cell is drawn as a 3x3 square on a fullscreen window. Note that each cell still
+	// corresponds to one pixel in pixels.
+	scaleFactor int
+
+	// The percent (0.0 to 100.0) chance any given board cell will initialize as alive.
+	avgStartingLiveCellPercentage float64
+
+	// Other state.
+	generation int
+	gensToRun  int
+	isPaused   bool
 }
 
-func becomesAlive(n uint8) bool {
+func becomesAlive(n uint8, BRules []uint8) bool {
 	if n&1 == 1 {
 		return false
 	}
@@ -82,7 +72,7 @@ func becomesAlive(n uint8) bool {
 	return false
 }
 
-func becomesDead(n uint8) bool {
+func becomesDead(n uint8, SRules []uint8) bool {
 	if n&1 == 0 {
 		return false
 	}
@@ -94,101 +84,6 @@ func becomesDead(n uint8) bool {
 	return true
 }
 
-type EditState bool
-
-const (
-	ChangingBirthRules   EditState = false
-	ChangingSurviveRules EditState = true
-)
-
-type Game struct {
-	worldGrid           []uint8
-	buffer              []uint8
-	gridX, gridY        int
-	transparencyOverlay *ebiten.Image
-	pixels              *ebiten.Image
-	generation          int
-	name                string
-	isPaused            bool
-	editState           EditState
-}
-
-func updateRules(rules []uint8, nums []uint8) []uint8 {
-	res := []uint8{}
-
-	all := []uint8{}
-	all = append(all, nums...)
-	all = append(all, rules...)
-
-	for _, v := range all {
-		// add only those nums which appear in exactly one of the two slices
-		if slices.Contains(rules, v) != slices.Contains(nums, v) {
-			res = append(res, v)
-		}
-	}
-
-	return res
-}
-
-func (g *Game) updatePaused() error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
-		g.editState = !g.editState
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
-		if g.editState == ChangingBirthRules {
-			BRulesBuffer = []uint8{}
-		} else {
-			SRulesBuffer = []uint8{}
-		}
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEqual) {
-		if ebiten.IsKeyPressed(ebiten.KeyControl) {
-			avgStartingLiveCellPercentage += 0.1
-		} else if ebiten.IsKeyPressed(ebiten.KeyShift) {
-			avgStartingLiveCellPercentage += 1.0
-		} else {
-			avgStartingLiveCellPercentage += 10.0
-		}
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyMinus) {
-		if ebiten.IsKeyPressed(ebiten.KeyControl) {
-			avgStartingLiveCellPercentage -= 0.1
-		} else if ebiten.IsKeyPressed(ebiten.KeyShift) {
-			avgStartingLiveCellPercentage -= 1.0
-		} else {
-			avgStartingLiveCellPercentage -= 10.0
-		}
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) && scaleFactorIndex+1 < len(possibleScaleFactors) {
-		scaleFactorIndex++
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) && scaleFactorIndex-1 >= 0 {
-		scaleFactorIndex--
-	}
-
-	avgStartingLiveCellPercentage = math.Max(avgStartingLiveCellPercentage, 0.0)
-	avgStartingLiveCellPercentage = math.Min(avgStartingLiveCellPercentage, 100.0)
-
-	// TOOD: check if 0 is handled correctly in updates
-	nums := []uint8{}
-	keys := []ebiten.Key{ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8}
-	for _, key := range keys {
-		if inpututil.IsKeyJustPressed(key) {
-			nums = append(nums, uint8(int(key)-int(ebiten.Key0)))
-		}
-	}
-
-	if g.editState == ChangingBirthRules {
-		BRulesBuffer = updateRules(BRulesBuffer, nums)
-	} else {
-		SRulesBuffer = updateRules(SRulesBuffer, nums)
-	}
-
-	sort.Slice(BRulesBuffer, func(i, j int) bool { return BRulesBuffer[i] < BRulesBuffer[j] })
-	sort.Slice(SRulesBuffer, func(i, j int) bool { return SRulesBuffer[i] < SRulesBuffer[j] })
-	return nil
-}
-
 func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		g.Restart()
@@ -196,23 +91,20 @@ func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.isPaused = !g.isPaused
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
-		if ebiten.IsKeyPressed(ebiten.KeyShift) {
-			if ebiten.FPSMode() == ebiten.FPSModeVsyncOffMaximum {
-				ebiten.SetFPSMode(ebiten.FPSModeVsyncOn)
-			} else {
-				ebiten.SetFPSMode(ebiten.FPSModeVsyncOffMaximum)
-			}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) && ebiten.IsKeyPressed(ebiten.KeyShift) {
+		if ebiten.FPSMode() == ebiten.FPSModeVsyncOffMaximum {
+			ebiten.SetFPSMode(ebiten.FPSModeVsyncOn)
 		} else {
-			isFpsVisible = !isFpsVisible
+			ebiten.SetFPSMode(ebiten.FPSModeVsyncOffMaximum)
 		}
 	}
+	g.ui.handleInput(g.isPaused)
 	if g.isPaused {
-		return g.updatePaused()
+		return nil
 	}
 
 	g.generation++
-	if g.generation == gensToRun {
+	if g.generation == g.gensToRun {
 		os.Exit(0)
 	}
 
@@ -224,7 +116,7 @@ func (g *Game) Update() error {
 				continue
 			}
 			val := g.worldGrid[ind]
-			if becomesAlive(val) { // cell becomes alive
+			if becomesAlive(val, g.BRules) { // cell becomes alive
 				g.buffer[ind] |= 1
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
@@ -232,7 +124,7 @@ func (g *Game) Update() error {
 					}
 				}
 				g.pixels.Set(j-1, i-1, color.White)
-			} else if becomesDead(val) { // cell dies
+			} else if becomesDead(val, g.SRules) { // cell dies
 				g.buffer[ind] -= 1
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
@@ -250,88 +142,72 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Restart() {
-	BRules = make([]uint8, len(BRulesBuffer))
-	copy(BRules, BRulesBuffer)
+	// Change the rules, scale factor and initial live cell percentage to the ones selected in the UI.
+	g.BRules = make([]uint8, len(g.ui.selectedBRules))
+	copy(g.BRules, g.ui.selectedBRules)
+	g.SRules = make([]uint8, len(g.ui.selectedSRules))
+	copy(g.SRules, g.ui.selectedSRules)
+	g.scaleFactor = g.ui.getScaleFactor()
+	g.avgStartingLiveCellPercentage = g.ui.selectedLiveCellPercent
 
-	SRules = make([]uint8, len(SRulesBuffer))
-	copy(SRules, SRulesBuffer)
+	// Reset state.
 	g.generation = 0
-
-	scaleFactor = possibleScaleFactors[scaleFactorIndex]
-	g.Init()
+	g.initializeBoard()
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	options := &ebiten.DrawImageOptions{}
-	options.GeoM.Scale(float64(scaleFactor), float64(scaleFactor))
+	options.GeoM.Scale(float64(g.scaleFactor), float64(g.scaleFactor))
 	screen.DrawImage(g.pixels, options)
 
 	if g.isPaused {
-		screen.DrawImage(g.transparencyOverlay, options)
-
-		lines := []string{
-			"%vbirth rules: %v",
-			"%vsurvival rules: %v",
-			"inital percentage of live cells: %.1f",
-			"scale factor: %v",
-			"%.2f FPS, generation %v",
-			"",
-			"use number keys to modify cell %v rules (press TAB to switch, C to clear)",
-			"use - and + to change initial live cell percentage (hold SHIFT for a smaller increment or CTRL for the smallest)",
-			"use [ and ] to change scale factor",
-			"press F to toggle FPS visibility and SHIFT+F to toggle FPS cap",
-			"",
-			"press SPACE to pause/unpause or R to restart with new settings"}
-
-		infoFormatString := strings.Join(lines, "\n")
-
-		changeType := "BIRTH"
-		if g.editState == ChangingSurviveRules {
-			changeType = "SURVIVAL"
-		}
-
-		birthRulesIndicator := "*"
-		survivalRulesIndicator := ""
-		if g.editState == ChangingSurviveRules {
-			birthRulesIndicator = ""
-			survivalRulesIndicator = "*"
-		}
-
-		birthRules := ""
-		for _, v := range BRulesBuffer {
-			birthRules += strconv.Itoa(int(v)) + " "
-		}
-		survivalRules := ""
-		for _, v := range SRulesBuffer {
-			survivalRules += strconv.Itoa(int(v)) + " "
-		}
-
-		infoString := fmt.Sprintf(infoFormatString, birthRulesIndicator, birthRules, survivalRulesIndicator, survivalRules,
-			avgStartingLiveCellPercentage, possibleScaleFactors[scaleFactorIndex], ebiten.ActualFPS(), g.generation, changeType)
-
-		text.Draw(screen, infoString, uiFont, 20, 40, color.White)
-	} else if isFpsVisible {
-		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), uiFont, 20, 40, color.White)
+		screen.DrawImage(g.transparencyOverlay, nil)
 	}
+
+	g.ui.Draw(screen, g.isPaused)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return ebiten.ScreenSizeInFullscreen()
 }
 
-func (g *Game) Init() {
-	x, y := ebiten.ScreenSizeInFullscreen()
-	g.gridX = x / scaleFactor
-	g.gridY = y / scaleFactor
+// Initializes the initial simulation state. Called only once, before ebiten.runGame(g)
+func (g *Game) initializeState() {
+	// Currently seed is always 0, kind of redundant.
+	rand.New(rand.NewSource(seed))
 
-	g.name += "B"
-	for _, v := range BRules {
-		g.name += strconv.Itoa(int(v))
-	}
-	g.name += "S"
-	for _, v := range SRules {
-		g.name += strconv.Itoa(int(v))
-	}
+	// Initial rule set is just Conway's Game of Life.
+	g.BRules = []uint8{3}
+	g.SRules = []uint8{2, 3}
+
+	g.avgStartingLiveCellPercentage = 50.0
+
+	g.generation = 0
+	g.gensToRun = 100 * 60 // run for 100s; TODO: remove gensToRun
+	g.isPaused = false
+
+	// Start the simulation at the second smallest scale factor, i.e. slightly zoomed in.
+	// For most screen resolutions this will be a 2x zoom (since both screen height and width are usually even).
+	initialScaleIndex := 1
+
+	// Initialize UI, get the chosen scale factor from it.
+	g.ui.initialize(g.BRules, g.SRules, g.avgStartingLiveCellPercentage, initialScaleIndex)
+	g.scaleFactor = g.ui.getScaleFactor()
+
+	x, y := ebiten.ScreenSizeInFullscreen()
+	g.gridX = x / g.scaleFactor
+	g.gridY = y / g.scaleFactor
+
+	// The transparency overlay has a constant size corresponding to the max screen size, so that we can
+	// always use this same overlay instead of creating new ones when the scale factors changes.
+	g.transparencyOverlay = ebiten.NewImage(x, y)
+	g.transparencyOverlay.Fill(color.RGBA{0, 0, 0, 255 * 3 / 4}) // black but not completely opaque
+}
+
+func (g *Game) initializeBoard() {
+	x, y := ebiten.ScreenSizeInFullscreen()
+	g.gridX = x / g.scaleFactor
+	g.gridY = y / g.scaleFactor
 
 	g.pixels = ebiten.NewImage(g.gridX, g.gridY)
 	g.pixels.Fill(color.Black)
@@ -339,7 +215,7 @@ func (g *Game) Init() {
 	g.buffer = make([]uint8, (g.gridX+2)*(g.gridY+2))
 	for i := 1; i <= g.gridY; i++ {
 		for j := 1; j <= g.gridX; j++ {
-			if rand.Intn(100000) < int(1000*avgStartingLiveCellPercentage) {
+			if rand.Intn(100000) < int(1000*g.avgStartingLiveCellPercentage) {
 				g.worldGrid[i*(g.gridX+2)+j] |= 1
 				g.pixels.Set(j-1, i-1, color.White)
 				for a := -1; a <= 1; a++ {
@@ -352,9 +228,6 @@ func (g *Game) Init() {
 			}
 		}
 	}
-
-	g.transparencyOverlay = ebiten.NewImage(g.gridX, g.gridY)
-	g.transparencyOverlay.Fill(color.RGBA{0, 0, 0, 255 * 3 / 4}) // black but not completely opaque
 }
 
 func main() {
@@ -364,9 +237,9 @@ func main() {
 	ebiten.SetTPS(ebiten.SyncWithFPS)
 	ebiten.SetFPSMode(ebiten.FPSModeVsyncOffMaximum)
 	ebiten.SetWindowTitle("go-llca")
-	// ebiten.SetFPSMode(ebiten.FPSModeVsyncOn)
 	g := &Game{}
-	g.Init()
+	g.initializeState()
+	g.initializeBoard()
 	if err := ebiten.RunGame(g); err != nil {
 		log.Fatal(err)
 	}
