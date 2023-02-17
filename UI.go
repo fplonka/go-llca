@@ -19,9 +19,10 @@ import (
 )
 
 const (
-	FONT_PATH = "fonts/JetBrainsMono-Medium.ttf"
-	FONT_SIZE = 12
-	MARGIN    = 20
+	FONT_PATH     = "fonts/JetBrainsMono-Medium.ttf"
+	FONT_SIZE     = 13
+	MARGIN        = 20
+	SHADOW_OFFSET = 2
 )
 
 type UI struct {
@@ -99,7 +100,7 @@ func loadFontFace(path string) font.Face {
 
 func (ui *UI) handleInput(isGamePaused bool) {
 	// If the simulation is running, then the only UI-related input to handle is FPS visibility.
-	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) && !ebiten.IsKeyPressed(ebiten.KeyShift) {
 		ui.isFpsVisible = !ui.isFpsVisible
 	}
 	if !isGamePaused {
@@ -237,6 +238,7 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 		infoX := MARGIN
 		infoY := screenY - boundsAllLines.Dy() - MARGIN + boundsFirstLine.Dy()
 
+		text.Draw(screen, infoString, ui.uiFont, infoX+SHADOW_OFFSET, infoY+SHADOW_OFFSET, color.Black)
 		text.Draw(screen, infoString, ui.uiFont, infoX, infoY, color.White)
 	}
 
@@ -250,7 +252,7 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 		fpsX := screenX - bounds.Dx() - MARGIN
 		fpsY := bounds.Dy() + MARGIN
 
-		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.uiFont, fpsX, fpsY, color.Black)
+		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.uiFont, fpsX+SHADOW_OFFSET, fpsY+SHADOW_OFFSET, color.Black)
 		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.uiFont, fpsX, fpsY, color.White)
 	}
 
