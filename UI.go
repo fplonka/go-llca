@@ -47,7 +47,7 @@ type UI struct {
 	isFpsVisible bool
 
 	// Font face for UI text rendering.
-	uiFont font.Face
+	fontFace font.Face
 }
 
 func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initialScaleIndex int) {
@@ -72,10 +72,10 @@ func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initia
 		}
 	}
 
-	ui.uiFont = loadFontFace(FONT_PATH)
+	ui.fontFace = loadFontFace(FONT_PATH)
 }
 
-// Loads a font face from a remote .ttf file.
+// Loads a font face from a remote .ttf file URL.
 func loadFontFace(path string) font.Face {
 	resp, err := http.Get(path)
 	if err != nil {
@@ -229,19 +229,19 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 
 		// Because text.Draw() is weird about positioning, we use the height of the first line to offset the y position
 		// of the UI text.
-		boundsFirstLine := text.BoundString(ui.uiFont, lines[0])
-		boundsAllLines := text.BoundString(ui.uiFont, infoString)
+		boundsFirstLine := text.BoundString(ui.fontFace, lines[0])
+		boundsAllLines := text.BoundString(ui.fontFace, infoString)
 		infoX := MARGIN
 		infoY := screenY - boundsAllLines.Dy() - MARGIN + boundsFirstLine.Dy()
 
 		// Draw first with black to get a slight "shadow" which helps with readability.
-		text.Draw(screen, infoString, ui.uiFont, infoX+SHADOW_OFFSET, infoY+SHADOW_OFFSET, color.Black)
-		text.Draw(screen, infoString, ui.uiFont, infoX, infoY, color.White)
+		text.Draw(screen, infoString, ui.fontFace, infoX+SHADOW_OFFSET, infoY+SHADOW_OFFSET, color.Black)
+		text.Draw(screen, infoString, ui.fontFace, infoX, infoY, color.White)
 	}
 
 	if ui.isFpsVisible {
 		fpsString := fmt.Sprintf("%.2f FPS", ebiten.ActualFPS())
-		bounds := text.BoundString(ui.uiFont, fpsString)
+		bounds := text.BoundString(ui.fontFace, fpsString)
 
 		// This could also use ebiten.ScreenSizeInFullscreen(); TODO: standardize this with a method in main.
 		screenX, _ := screen.Size()
@@ -249,8 +249,8 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 		fpsY := bounds.Dy() + MARGIN
 
 		// Draw first with black to get a slight "shadow" which helps with readability.
-		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.uiFont, fpsX+SHADOW_OFFSET, fpsY+SHADOW_OFFSET, color.Black)
-		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.uiFont, fpsX, fpsY, color.White)
+		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.fontFace, fpsX+SHADOW_OFFSET, fpsY+SHADOW_OFFSET, color.Black)
+		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.fontFace, fpsX, fpsY, color.White)
 	}
 
 }

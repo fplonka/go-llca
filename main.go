@@ -9,8 +9,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-// TODO: make this controllable / less hardcoded somehow
-const seed = 0
+// Random number source for game board initialization.
+var r *rand.Rand
+
+// Seed for the random number source. r is seeded only once and is not reinitialized with the seed before every run, so
+// the order in which simulation runs are started will affect their initial board states.
+const SEED = 0
 
 // The value at index i corresponds to the birth/survival rule for when i neighbours are alive.
 type Ruleset [9]bool
@@ -166,7 +170,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 // Initializes the initial simulation state. Called only once, before ebiten.runGame(g).
 func (g *Game) initializeState() {
 	// Currently seed is always 0, kind of redundant.
-	rand.New(rand.NewSource(seed))
+	r = rand.New(rand.NewSource(SEED))
 
 	// Initial rule set is just Conway's Game of Life.
 	g.BRules = Ruleset{}
@@ -200,6 +204,7 @@ func (g *Game) initializeState() {
 // Initializes the simulation board, filling it with cells randomly, and creates the corresponding initial simulation
 // image. The chance of a given cell being set to alive is given by g.avgStartingLiveCellPercentage.
 func (g *Game) initializeBoard() {
+
 	x, y := ebiten.ScreenSizeInFullscreen()
 	g.gridX = x / g.scaleFactor
 	g.gridY = y / g.scaleFactor
@@ -208,9 +213,10 @@ func (g *Game) initializeBoard() {
 	g.pixels.Fill(color.Black)
 	g.worldGrid = make([]uint8, (g.gridX+2)*(g.gridY+2))
 	g.buffer = make([]uint8, (g.gridX+2)*(g.gridY+2))
+
 	for i := 1; i <= g.gridY; i++ {
 		for j := 1; j <= g.gridX; j++ {
-			if rand.Intn(100000) < int(1000*g.avgStartingLiveCellPercentage) { // Cell becomes alive.
+			if int(r.Int63n(100000)) < int(1000*g.avgStartingLiveCellPercentage) { // Cell becomes alive.
 				g.worldGrid[i*(g.gridX+2)+j] |= 1
 				g.pixels.Set(j-1, i-1, color.White)
 				// Update live neighbour counts in the cells affected by this cell becoming alive.
