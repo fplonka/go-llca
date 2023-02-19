@@ -1,16 +1,21 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"log"
 	"math/rand"
+	"runtime"
+	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 // TODO: make this controllable / less hardcoded somehow
-const seed = 0
+const SEED = 0
+
+const MAX_ROUTINES = 32
 
 // The value at index i corresponds to the birth/survival rule for when i neighbours are alive.
 type Ruleset [9]bool
@@ -33,12 +38,13 @@ type Game struct {
 	// which are always dead. This allows us to skip index out of bounds checks.
 	//
 	// The grid size is dependent on the scale factor.
-	worldGrid    []uint8
-	buffer       []uint8
+	worldGrid    []int8
+	buffer       []int8
 	gridX, gridY int
 
 	// Dead cells are black, live cells are white. The size of pixels is like that of the board but without the border.
-	pixels *ebiten.Image
+	img    *ebiten.Image
+	pixels []byte
 
 	// Semi-transparent image to cover and "dim" the simulation image when paused.
 	transparencyOverlay *ebiten.Image
@@ -59,6 +65,98 @@ type Game struct {
 
 	// When paused, the simulation doesn't run and a settings change UI is displayed.
 	isPaused bool
+}
+
+// Update board rows from i to j inclusive.
+func (g *Game) updateRange(minY, maxY int, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// If we're still not at the goroutine limit and the range we're updating is at least 2 rows, divide and conquer in
+	// parallel.
+	// FIX COMMENTSKJFLDJDLFKJKL
+	if runtime.NumGoroutine() < MAX_ROUTINES && maxY-minY+1 >= 4 {
+		// Split rows into two parts and update them recursively.
+		midY := (minY + maxY) / 2
+		var newWg sync.WaitGroup
+		newWg.Add(2)
+		go g.updateRange(minY, midY-1, &newWg)
+		go g.updateRange(midY+2, maxY, &newWg)
+		newWg.Wait()
+
+		// "Merge step": sequentually update the 2-wide border strip
+		newWg.Add(1)
+		g.updateRange(midY, midY+1, &newWg)
+
+	} else { // Otherwise, just update this range.
+		// Update the game board.
+		// We do this more efficiently by copying the board state into a buffer and modifying only those cells in the buffer
+		// which are changing state (becoming alive or dying).
+
+		for i := minY; i <= maxY; i++ {
+			for j := 1; j <= g.gridX; j++ {
+				// Getting the "2D g.worldGrid[i][j]" index from the 1D slice. +2 because of the board edge border.
+				ind := i*(g.gridX+2) + j
+				val := g.worldGrid[ind]
+
+				// if val < 0 {
+				// 	log.Fatal("uh oh, we have val=", val)
+				// }
+
+				if val&1 == 0 && g.BRules[val>>1] { // Checking if the cell is becoming alive. val&1 == 0 ensures that this
+					// cell was dead previously, and val>>1 gets the number of live neighbours.
+
+					g.buffer[ind] |= 1 // Set the last bit to 1 to indicate that this cell is now alive.
+					for a := -1; a <= 1; a++ {
+						for b := -1; b <= 1; b++ {
+							// Update all the neighbours and also this cell. Adding 2 adds to the bit-shifted
+							// neighbour-count part of the value.
+							g.buffer[(i+a)*(g.gridX+2)+j+b] += 2
+
+						}
+					}
+					// -1 because i and j and 1-indexed due to the border, which the game board image doesn't have.
+					// g.pixels.Set(j-1, i-1, color.White)
+					setPixel(g.pixels, g.gridX, j-1, i-1, false)
+
+				} else if val&1 == 1 && !g.SRules[val>>1-1] { // Checking if the cell is becoming dead. val&1 == 1 ensures
+					// that this cell was alive previously. Since this cell is alive, val>>1 is the one more than the number
+					// of live neighbours, as this cell is also counted in val>1, so we check val>>1-1 in SRules.
+
+					// The rest of this case is analogous to the cell becoming alive case.
+					g.buffer[ind] -= 1 // Set the last bit to 0 to indicate that this cell is now dead.
+					for a := -1; a <= 1; a++ {
+						for b := -1; b <= 1; b++ {
+							g.buffer[(i+a)*(g.gridX+2)+j+b] -= 2
+						}
+					}
+					setPixel(g.pixels, g.gridX, j-1, i-1, true)
+				}
+
+			}
+		}
+	}
+}
+
+func (g *Game) verify() error {
+	for i := 1; i <= g.gridY; i++ {
+		for j := 1; j <= g.gridY; j++ {
+			desiredVal := int8(0)
+			for a := -1; a <= 1; a++ {
+				for b := -1; b <= 1; b++ {
+					desiredVal += 2 * (g.worldGrid[(i+a)*(g.gridX+2)+j+b] & 1)
+				}
+			}
+			desiredVal |= (g.worldGrid[(i)*(g.gridX+2)+j] & 1)
+			ind := i*(g.gridX+2) + j
+			val := g.worldGrid[ind]
+			if desiredVal != val {
+				return fmt.Errorf("incorrect at (%v %v), should be %v but is %v", j, i, desiredVal, val)
+			}
+
+		}
+	}
+
+	return nil
 }
 
 func (g *Game) Update() error {
@@ -83,50 +181,28 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	// Update the game board.
-	// We do this more efficiently by copying the board state into a buffer and modifying only those cells in the buffer
-	// which are changing state (becoming alive or dying).
+	// update calls some updateRange function
+	// updateRange updates ROWS (cache efficiency) from i to j inclusive
+	// simple enough, but main concern: how does the main update func tell when all the update range goroutines are
+	// done?
+	// waitgroups probably
+	// update creates a waitgroup,
+	//
+	// also, need a merge step to do the border. 1 pixel wide.
+
 	copy(g.buffer, g.worldGrid)
-	for i := 1; i <= g.gridY; i++ {
-		for j := 1; j <= g.gridX; j++ {
-			// Getting the "2D g.worldGrid[i][j]" index from the 1D slice. +2 because of the board edge border.
-			ind := i*(g.gridX+2) + j
-			val := g.worldGrid[ind]
-
-			if val&1 == 0 && g.BRules[val>>1] { // Checking if the cell is becoming alive. val&1 == 0 ensures that this
-				// cell was dead previously, and val>>1 gets the number of live neighbours.
-
-				g.buffer[ind] |= 1 // Set the last bit to 1 to indicate that this cell is now alive.
-				for a := -1; a <= 1; a++ {
-					for b := -1; b <= 1; b++ {
-						// Update all the neighbours and also this cell. Adding 2 adds to the bit-shifted
-						// neighbour-count part of the value.
-						g.buffer[(i+a)*(g.gridX+2)+j+b] += 2
-
-					}
-				}
-				// -1 because i and j and 1-indexed due to the border, which the game board image doesn't have.
-				g.pixels.Set(j-1, i-1, color.White)
-
-			} else if val&1 == 1 && !g.SRules[val>>1-1] { // Checking if the cell is becoming dead. val&1 == 1 ensures
-				// that this cell was alive previously. Since this cell is alive, val>>1 is the one more than the number
-				// of live neighbours, as this cell is also counted in val>1, so we check val>>1-1 in SRules.
-
-				// The rest of this case is analogous to the cell becoming alive case.
-				g.buffer[ind] -= 1 // Set the last bit to 0 to indicate that this cell is now dead.
-				for a := -1; a <= 1; a++ {
-					for b := -1; b <= 1; b++ {
-						g.buffer[(i+a)*(g.gridX+2)+j+b] -= 2
-					}
-				}
-				g.pixels.Set(j-1, i-1, color.Black)
-			}
-
-		}
-	}
-	// Make the buffer making our changes in the new world grid. We can't do the changes in place, using only one board,
-	// since if we change a cell's state, that will effect how the neighbouring cells will get updated.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go g.updateRange(1, g.gridY, &wg)
+	wg.Wait()
 	copy(g.worldGrid, g.buffer)
+
+	// err := g.verify()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// fmt.Println("updated!")
 
 	return nil
 }
@@ -145,9 +221,11 @@ func (g *Game) Restart() {
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	// Draw the game board image in (0, 0) and scaling by the scale factor to fill the whole screen.
+	// screen.WritePixels(g.pixels)
+	g.img.WritePixels(g.pixels)
 	options := &ebiten.DrawImageOptions{}
 	options.GeoM.Scale(float64(g.scaleFactor), float64(g.scaleFactor))
-	screen.DrawImage(g.pixels, options)
+	screen.DrawImage(g.img, options)
 
 	// To dim the simulation in the background so that the pause menu UI is visible.
 	if g.isPaused {
@@ -158,6 +236,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.ui.Draw(screen, g.isPaused)
 }
 
+func setPixel(pixels []byte, gridX, x, y int, isBlack bool) {
+	col := []byte{255, 255, 255, 255}
+	if isBlack {
+		col = []byte{0, 0, 0, 255}
+	}
+	ind := 4 * (y*gridX + x)
+	copy(pixels[ind:ind+4], col)
+}
+
 // Returns the size of the screen we want to be rendering to.
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return ebiten.ScreenSizeInFullscreen()
@@ -166,7 +253,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 // Initializes the initial simulation state. Called only once, before ebiten.runGame(g).
 func (g *Game) initializeState() {
 	// Currently seed is always 0, kind of redundant.
-	rand.New(rand.NewSource(seed))
+	rand.New(rand.NewSource(SEED))
 
 	// Initial rule set is just Conway's Game of Life.
 	g.BRules = Ruleset{}
@@ -204,15 +291,19 @@ func (g *Game) initializeBoard() {
 	g.gridX = x / g.scaleFactor
 	g.gridY = y / g.scaleFactor
 
-	g.pixels = ebiten.NewImage(g.gridX, g.gridY)
-	g.pixels.Fill(color.Black)
-	g.worldGrid = make([]uint8, (g.gridX+2)*(g.gridY+2))
-	g.buffer = make([]uint8, (g.gridX+2)*(g.gridY+2))
+	g.img = ebiten.NewImage(g.gridX, g.gridY)
+	g.img.Fill(color.Black)
+
+	g.pixels = make([]byte, 4*g.gridX*g.gridY)
+
+	g.worldGrid = make([]int8, (g.gridX+2)*(g.gridY+2))
+	g.buffer = make([]int8, (g.gridX+2)*(g.gridY+2))
 	for i := 1; i <= g.gridY; i++ {
 		for j := 1; j <= g.gridX; j++ {
 			if rand.Intn(100000) < int(1000*g.avgStartingLiveCellPercentage) { // Cell becomes alive.
 				g.worldGrid[i*(g.gridX+2)+j] |= 1
-				g.pixels.Set(j-1, i-1, color.White)
+				// g.pixels.Set(j-1, i-1, color.White)
+				setPixel(g.pixels, g.gridX, j-1, i-1, false)
 				// Update live neighbour counts in the cells affected by this cell becoming alive.
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
