@@ -265,7 +265,6 @@ func (g *Game) initializeState() {
 // Initializes the simulation board, filling it with cells randomly, and creates the corresponding initial simulation
 // image. The chance of a given cell being set to alive is given by g.avgStartingLiveCellPercentage.
 func (g *Game) initializeBoard() {
-
 	x, y := ebiten.ScreenSizeInFullscreen()
 	g.gridX = x / g.scaleFactor
 	g.gridY = y / g.scaleFactor
@@ -304,7 +303,7 @@ func main() {
 	// By default, update and render as fast as possible. Currently this makes the simulation speed "pulsate" slightly,
 	// maybe because of GC activity?
 	ebiten.SetTPS(ebiten.SyncWithFPS)
-	ebiten.SetFPSMode(ebiten.FPSModeVsyncOffMaximum)
+	ebiten.SetFPSMode(ebiten.FPSModeVsyncOn)
 
 	ebiten.SetWindowTitle("go-llca")
 
