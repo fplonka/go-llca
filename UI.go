@@ -164,7 +164,7 @@ func (ui *UI) handleInput(isGamePaused bool) {
 }
 
 func (ui *UI) handleNumberKeys() {
-	// Figure out which number key is being pressed. Handles the possibility of multiple at once, which is possible but
+	// Figure out which number key is being pressed. Handles the possibility of multiple at once, which is unlikely but
 	// rare.
 	nums := []uint8{}
 	keys := []ebiten.Key{ebiten.Key0, ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8}
