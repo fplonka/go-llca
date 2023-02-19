@@ -48,8 +48,8 @@ type Game struct {
 	transparencyOverlay *ebiten.Image
 
 	// Game rules.
-	// A dead cell becomes alive iff the number of its living neighbours (out of 8) is in BRules.
-	// A living cell stays alive iff the number of its living neighbours (out of 8) is in SRules
+	// A dead cell becomes alive iff BRules at the number of its living neighbours (out of 8) is true
+	// A living cell stays alive iff SRules at the number of its living neighbours (out of 8) is true
 	// These rules do NOT count a live cell as its own neighbour.
 	BRules Ruleset
 	SRules Ruleset
@@ -72,6 +72,9 @@ func (g *Game) Update() error {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.isPaused = !g.isPaused
+
+		// The user has left the splash screen.
+		g.ui.shouldDisplaySlashScreen = false
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) && ebiten.IsKeyPressed(ebiten.KeyShift) {
 		if ebiten.FPSMode() == ebiten.FPSModeVsyncOffMaximum {
@@ -114,7 +117,7 @@ func (g *Game) Update() error {
 
 			} else if val&1 == 1 && !g.SRules[val>>1-1] { // Checking if the cell is becoming dead. val&1 == 1 ensures
 				// that this cell was alive previously. Since this cell is alive, val>>1 is the one more than the number
-				// of live neighbours, as this cell is also counted in val>1, so we check val>>1-1 in SRules.
+				// of live neighbours, as this cell is also counted in val>>1, so we check val>>1-1 in SRules.
 
 				// The rest of this case is analogous to the cell becoming alive case.
 				g.buffer[ind] -= 1 // Set the last bit to 0 to indicate that this cell is now dead.
@@ -181,7 +184,7 @@ func (g *Game) initializeState() {
 
 	g.avgStartingLiveCellPercentage = 50.0
 
-	g.isPaused = false
+	g.isPaused = true
 
 	// Start the simulation at the second smallest scale factor, i.e. slightly zoomed in. For most screen resolutions
 	// this will be a 2x zoom (since both screen height and width are usually even).

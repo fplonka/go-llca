@@ -46,6 +46,9 @@ type UI struct {
 	// FPS visibility during simulation.
 	isFpsVisible bool
 
+	// True when the application is first started, false afterwards.
+	shouldDisplaySlashScreen bool
+
 	// Font face for UI text rendering.
 	fontFace font.Face
 }
@@ -60,6 +63,7 @@ func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initia
 
 	ui.rulesBeingChanged = &ui.selectedBRules
 	ui.isFpsVisible = true
+	ui.shouldDisplaySlashScreen = true
 	ui.scaleFactorIndex = initialScaleIndex
 
 	// Initialize possible scale factors, i.e. find the integers which divide both the screen width and height.
@@ -176,6 +180,25 @@ func (ui *UI) handleNumberKeys() {
 }
 
 func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
+	// Draw the splash screen if needed.
+	if ui.shouldDisplaySlashScreen {
+		line1 := "go-llca"
+		bounds1 := text.BoundString(ui.fontFace, line1)
+
+		line2 := "press SPACE to pause/unpause"
+		bounds2 := text.BoundString(ui.fontFace, line2)
+
+		// Line height as an int for centering the text.
+		h := ui.fontFace.Metrics().Height.Round()
+
+		screenX, screenY := screen.Size()
+
+		drawTextWithShadow(screen, line1, ui.fontFace, (screenX-bounds1.Dx())/2, (screenY-bounds1.Dy())/2-h)
+		drawTextWithShadow(screen, line2, ui.fontFace, (screenX-bounds2.Dx())/2, (screenY-bounds2.Dy())/2+h)
+
+		return
+	}
+
 	if isGamePaused {
 		lines := []string{
 			"%vbirth rules: %v",
@@ -234,9 +257,7 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 		infoX := MARGIN
 		infoY := screenY - boundsAllLines.Dy() - MARGIN + boundsFirstLine.Dy()
 
-		// Draw first with black to get a slight "shadow" which helps with readability.
-		text.Draw(screen, infoString, ui.fontFace, infoX+SHADOW_OFFSET, infoY+SHADOW_OFFSET, color.Black)
-		text.Draw(screen, infoString, ui.fontFace, infoX, infoY, color.White)
+		drawTextWithShadow(screen, infoString, ui.fontFace, infoX, infoY)
 	}
 
 	if ui.isFpsVisible {
@@ -248,11 +269,15 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 		fpsX := screenX - bounds.Dx() - MARGIN
 		fpsY := bounds.Dy() + MARGIN
 
-		// Draw first with black to get a slight "shadow" which helps with readability.
-		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.fontFace, fpsX+SHADOW_OFFSET, fpsY+SHADOW_OFFSET, color.Black)
-		text.Draw(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.fontFace, fpsX, fpsY, color.White)
+		drawTextWithShadow(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.fontFace, fpsX, fpsY)
 	}
 
+}
+
+// Draw offset text in black and then white to get a slight "shadow" which helps with readability.
+func drawTextWithShadow(dst *ebiten.Image, str string, face font.Face, x, y int) {
+	text.Draw(dst, str, face, x+SHADOW_OFFSET, y+SHADOW_OFFSET, color.Black)
+	text.Draw(dst, str, face, x, y, color.White)
 }
 
 func (ui *UI) getScaleFactor() int {
@@ -275,5 +300,3 @@ func clamp[T int | float64](min, max, a T) T {
 	}
 	return a
 }
-
-// TODO: rename ui.uiFont lol
