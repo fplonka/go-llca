@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"image/color"
 	"log"
 	"math/rand"
@@ -15,13 +14,15 @@ import (
 // Random number source for game board initialization.
 var r *rand.Rand
 
-// Seed for the random number source. r is seeded only once and is not reinitialized with the seed before every run, so
-// the order in which simulation runs are started will affect their initial board states.
-const SEED = 0
+const (
+	// Seed for the random number source. r is seeded only once and is not reinitialized with the seed before every run, so
+	// the order in which simulation runs are started will affect their initial board states.
+	SEED = 0
 
-// The maximum number of go routines which can be spawned by the application. Used to limit to the concurrency when
-// updating the board.
-const MAX_ROUTINES = 64
+	// The maximum number of go routines which can be spawned by the application. Used to limit to the concurrency when
+	// updating the board.
+	MAX_ROUTINES = 64
+)
 
 // The value at index i corresponds to the birth/survival rule for when i neighbours are alive.
 type Ruleset [9]bool
@@ -142,28 +143,6 @@ func (g *Game) updateRange(minY, maxY int, wg *sync.WaitGroup) {
 			}
 		}
 	}
-}
-
-func (g *Game) verify() error {
-	for i := 1; i <= g.gridY; i++ {
-		for j := 1; j <= g.gridY; j++ {
-			desiredVal := int8(0)
-			for a := -1; a <= 1; a++ {
-				for b := -1; b <= 1; b++ {
-					desiredVal += 2 * (g.worldGrid[(i+a)*(g.gridX+2)+j+b] & 1)
-				}
-			}
-			desiredVal |= (g.worldGrid[(i)*(g.gridX+2)+j] & 1)
-			ind := i*(g.gridX+2) + j
-			val := g.worldGrid[ind]
-			if desiredVal != val {
-				return fmt.Errorf("incorrect at (%v %v), should be %v but is %v", j, i, desiredVal, val)
-			}
-
-		}
-	}
-
-	return nil
 }
 
 func (g *Game) Update() error {
