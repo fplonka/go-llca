@@ -15,7 +15,9 @@ import (
 // TODO: make this controllable / less hardcoded somehow
 const SEED = 0
 
-const MAX_ROUTINES = 32
+// The maximum number of go routines which can be spawned by the application. Used to limit to the concurrency when
+// updating the board.
+const MAX_ROUTINES = 64
 
 // The value at index i corresponds to the birth/survival rule for when i neighbours are alive.
 type Ruleset [9]bool
@@ -42,8 +44,11 @@ type Game struct {
 	buffer       []int8
 	gridX, gridY int
 
-	// Dead cells are black, live cells are white. The size of pixels is like that of the board but without the border.
-	img    *ebiten.Image
+	// The image we draw to the screen during the draw step. Dead cells are black, live cells are white.
+	img *ebiten.Image
+
+	// The raw pixels of our image. Each image pixel is represented as 4 bytes in pixels (RGBA channels), so we must
+	// have len(pixels) = 4 * (img width) * (img height).
 	pixels []byte
 
 	// Semi-transparent image to cover and "dim" the simulation image when paused.
@@ -71,36 +76,35 @@ type Game struct {
 func (g *Game) updateRange(minY, maxY int, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	// If we're still not at the goroutine limit and the range we're updating is at least 2 rows, divide and conquer in
-	// parallel.
-	// FIX COMMENTSKJFLDJDLFKJKL
+	// If we're still not at the goroutine limit and the range we're updating is at least 4 rows, do a concurrent divide
+	// and conquer step.
 	if runtime.NumGoroutine() < MAX_ROUTINES && maxY-minY+1 >= 4 {
-		// Split rows into two parts and update them recursively.
+		// Split rows into two parts and update them recursively. We leave a two pixel border between the updated ranges
+		// because when updating a range, we also update neighbour board values, and so when updating touching ranges
+		// in parallel we could try to update the same value at the same time.
 		midY := (minY + maxY) / 2
 		var newWg sync.WaitGroup
 		newWg.Add(2)
 		go g.updateRange(minY, midY-1, &newWg)
 		go g.updateRange(midY+2, maxY, &newWg)
-		newWg.Wait()
 
-		// "Merge step": sequentually update the 2-wide border strip
+		// We need a new syncgroup so we can wait until the two recursive calls are done and then sequentially update
+		// the 2-pixel border.
+		newWg.Wait()
+		// The waitgroup used when updating the border isn't actually used for anything, we just reuse newWg for
+		// simplicity.
 		newWg.Add(1)
 		g.updateRange(midY, midY+1, &newWg)
 
-	} else { // Otherwise, just update this range.
+	} else {
 		// Update the game board.
-		// We do this more efficiently by copying the board state into a buffer and modifying only those cells in the buffer
-		// which are changing state (becoming alive or dying).
-
+		// We do this more efficiently by copying the board state into a buffer and modifying only those cells in the
+		// buffer which are changing state (becoming alive or dying).
 		for i := minY; i <= maxY; i++ {
 			for j := 1; j <= g.gridX; j++ {
 				// Getting the "2D g.worldGrid[i][j]" index from the 1D slice. +2 because of the board edge border.
 				ind := i*(g.gridX+2) + j
 				val := g.worldGrid[ind]
-
-				// if val < 0 {
-				// 	log.Fatal("uh oh, we have val=", val)
-				// }
 
 				if val&1 == 0 && g.BRules[val>>1] { // Checking if the cell is becoming alive. val&1 == 0 ensures that this
 					// cell was dead previously, and val>>1 gets the number of live neighbours.
@@ -115,7 +119,6 @@ func (g *Game) updateRange(minY, maxY int, wg *sync.WaitGroup) {
 						}
 					}
 					// -1 because i and j and 1-indexed due to the border, which the game board image doesn't have.
-					// g.pixels.Set(j-1, i-1, color.White)
 					setPixel(g.pixels, g.gridX, j-1, i-1, false)
 
 				} else if val&1 == 1 && !g.SRules[val>>1-1] { // Checking if the cell is becoming dead. val&1 == 1 ensures
@@ -168,6 +171,7 @@ func (g *Game) Update() error {
 		g.isPaused = !g.isPaused
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) && ebiten.IsKeyPressed(ebiten.KeyShift) {
+		// Toggle FPS mode between uncapped and vsynced.
 		if ebiten.FPSMode() == ebiten.FPSModeVsyncOffMaximum {
 			ebiten.SetFPSMode(ebiten.FPSModeVsyncOn)
 		} else {
@@ -181,28 +185,15 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	// update calls some updateRange function
-	// updateRange updates ROWS (cache efficiency) from i to j inclusive
-	// simple enough, but main concern: how does the main update func tell when all the update range goroutines are
-	// done?
-	// waitgroups probably
-	// update creates a waitgroup,
-	//
-	// also, need a merge step to do the border. 1 pixel wide.
-
+	// Update the game board.
+	// We do this more efficiently by copying the board state into a buffer and modifying only those cells in the buffer
+	// which are changing state (becoming alive or dying).
 	copy(g.buffer, g.worldGrid)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go g.updateRange(1, g.gridY, &wg)
 	wg.Wait()
 	copy(g.worldGrid, g.buffer)
-
-	// err := g.verify()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// fmt.Println("updated!")
 
 	return nil
 }
@@ -220,8 +211,8 @@ func (g *Game) Restart() {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Draw the game board image in (0, 0) and scaling by the scale factor to fill the whole screen.
-	// screen.WritePixels(g.pixels)
+	// We write our board pixels to our game image, and then draw this image scaled in (0, 0) scaling by the scale
+	// factor to fill the whole screen.
 	g.img.WritePixels(g.pixels)
 	options := &ebiten.DrawImageOptions{}
 	options.GeoM.Scale(float64(g.scaleFactor), float64(g.scaleFactor))
@@ -236,13 +227,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.ui.Draw(screen, g.isPaused)
 }
 
+// Sets a pixel at a given index to either black or white.
 func setPixel(pixels []byte, gridX, x, y int, isBlack bool) {
-	col := []byte{255, 255, 255, 255}
+	color := []byte{255, 255, 255, 255}
 	if isBlack {
-		col = []byte{0, 0, 0, 255}
+		color = []byte{0, 0, 0, 255}
 	}
 	ind := 4 * (y*gridX + x)
-	copy(pixels[ind:ind+4], col)
+	copy(pixels[ind:ind+4], color)
 }
 
 // Returns the size of the screen we want to be rendering to.
@@ -294,6 +286,7 @@ func (g *Game) initializeBoard() {
 	g.img = ebiten.NewImage(g.gridX, g.gridY)
 	g.img.Fill(color.Black)
 
+	// RGBA channels, so 4 bytes per image pixel.
 	g.pixels = make([]byte, 4*g.gridX*g.gridY)
 
 	g.worldGrid = make([]int8, (g.gridX+2)*(g.gridY+2))
