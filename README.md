@@ -1,5 +1,6 @@
 ## Overview
 go-llca is a life-like cellular automaton simulation tool written in Go. It is built to allow **fast and easy experimention** with different automaton rules while being very **performant**: go-llca is multithreaded and can smoothly simulate boards with millions of cells.
+
 ![out2](https://user-images.githubusercontent.com/92261790/220154420-ab0629ab-3e55-4c66-8ace-e1fad030316e.gif)
 
 ## Installation
