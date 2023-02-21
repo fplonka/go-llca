@@ -176,7 +176,7 @@ func (g *Game) Update() error {
 				// Write to file concurrently so as to not cause a freeze, as this can take a few seconds, and tell the
 				// UI to indicate that we're saving.
 				g.ui.shouldDisplayWritingToFileText = true
-				g.gifSaver.WriteToFile()
+				g.gifSaver.writeToFile()
 				g.ui.shouldDisplayWritingToFileText = false
 			}()
 		}
@@ -241,7 +241,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		// This could also receive screen instead of g.img, to always save full resolution gifs, but saving higher
 		// resolution GIFs is slow and takes up a lot of space, so we save unscaled smaller GIFs. A user can always
 		// manually upscale them if desired.
-		g.gifSaver.SaveFrame(g.img)
+		g.gifSaver.saveFrame(g.img)
 	}
 
 	// Draw UI text elements.

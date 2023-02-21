@@ -15,16 +15,27 @@ import (
 
 const (
 	// The folder to which GIFs will be saved.
-	IMAGE_FOLDER = "img"
+	IMAGE_FOLDER = "output"
 
 	// Delay between frames in hundredths of seconds, approximating the 1/60 * 100 ≈ 1.667 required for 60 FPS.
 	FRAME_DELAY = 2
 )
 
+type GifSaver struct {
+	// The filename to which the GifSaver will save the GIF file.
+	fileName string
+
+	palette color.Palette
+
+	// Paletted images corresponding to each GIF frame.
+	frames []*image.Paletted
+
+	// The successive delay times, one per frame. In practice this is always FRAME_DELAY.
+	delays []int
+}
+
 func newGifSaver(bRules, sRules Ruleset) GifSaver {
 	res := GifSaver{}
-
-	res.generation = 0
 
 	// Give the run a filename which combines a timestamp and a simulation ruleset string.
 	bNums, sNums := "", ""
@@ -49,22 +60,7 @@ func newGifSaver(bRules, sRules Ruleset) GifSaver {
 	return res
 }
 
-type GifSaver struct {
-	// The filename to which the GifSaver will save the GIF file.
-	fileName   string
-	generation int
-
-	palette color.Palette
-
-	// Paletted images corresponding to each GIF frame.
-	frames []*image.Paletted
-
-	// The successive delay times, one per frame. In practice this is always FRAME_DELAY.
-	delays []int
-}
-
-func (gs *GifSaver) SaveFrame(img image.Image) {
-	gs.generation++
+func (gs *GifSaver) saveFrame(img image.Image) {
 
 	// Created a paletted image from the simulation board image.
 	bounds := img.Bounds()
@@ -76,7 +72,7 @@ func (gs *GifSaver) SaveFrame(img image.Image) {
 	gs.delays = append(gs.delays, FRAME_DELAY)
 }
 
-func (gs *GifSaver) WriteToFile() {
+func (gs *GifSaver) writeToFile() {
 	// Create the image directory if it doesn't exist.
 	if _, err := os.Stat(IMAGE_FOLDER); errors.Is(err, os.ErrNotExist) {
 		err := os.Mkdir(IMAGE_FOLDER, os.ModePerm)
