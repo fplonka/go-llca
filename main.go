@@ -9,7 +9,7 @@ import (
 
 func main() {
 	// Set the right window properties. Should give pixel perfect image in fullscreen.
-	ebiten.SetFullscreen(false)
+	ebiten.SetFullscreen(true)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowSize(ebiten.ScreenSizeInFullscreen())
 
