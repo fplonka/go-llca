@@ -1,11 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
+	"image/png"
 	"log"
 	"math/rand"
+	"os"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -13,6 +17,10 @@ import (
 
 // Random number source for game board initialization.
 var r *rand.Rand
+
+var runName string
+var isSaving bool = false
+var generation int = 0
 
 const (
 	// Seed for the random number source. r is seeded only once and is not reinitialized with the seed before every run, so
@@ -153,6 +161,29 @@ func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.isPaused = !g.isPaused
 
+		// Just left pause menu with SHIFT+SPACE, so we start recording.
+		if !g.isPaused && ebiten.IsKeyPressed(ebiten.KeyShift) {
+			t := time.Now()
+			runName = t.Format("2006-01-02_150405") + fmt.Sprintf("_%v", g.ui.getScaleFactor())
+			fmt.Println("run name:", runName)
+
+			// Create a directory in img/ with this run name.
+			err := os.Mkdir(fmt.Sprintf("img/%v", runName), 0o777)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			generation = 0
+			isSaving = true
+			g.Restart()
+			return nil
+		}
+
+		// Entering pause menu, stop recording
+		if g.isPaused {
+			isSaving = false
+		}
+
 		// The user has left the splash screen.
 		g.ui.shouldDisplaySlashScreen = false
 	}
@@ -207,6 +238,23 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// To dim the simulation in the background so that the pause menu UI is visible.
 	if g.isPaused {
 		screen.DrawImage(g.transparencyOverlay, nil)
+	}
+
+	if isSaving {
+		f, err := os.Create(fmt.Sprintf("img/%v/%06v.png", runName, generation))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		if err = png.Encode(f, g.img); err != nil {
+			log.Printf("failed to encode pixels as png: %v", err)
+		}
+	}
+	if isSaving {
+		generation++
+	}
+	if generation == 600 {
+		os.Exit(0)
 	}
 
 	// Draw UI text elements.
@@ -274,6 +322,21 @@ func (g *Game) initializeBoard() {
 
 	// RGBA channels, so 4 bytes per image pixel.
 	g.pixels = make([]byte, 4*g.gridX*g.gridY)
+
+	// Make all pixels black initially.
+	for i := 0; i < g.gridY; i++ {
+		for j := 0; j < g.gridX; j++ {
+			setPixel(g.pixels, g.gridX, j, i, true)
+		}
+	}
+
+	// for i := 0; i < len(g.pixels); i++ {
+	// 	if i%4 == 3 {
+	// 		g.pixels[i] = 255
+	// 	} else {
+	// 		g.pixels[i] = 0
+	// 	}
+	// }
 
 	g.worldGrid = make([]int8, (g.gridX+2)*(g.gridY+2))
 	g.buffer = make([]int8, (g.gridX+2)*(g.gridY+2))
