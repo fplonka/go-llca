@@ -1,19 +1,37 @@
 ## Overview
-go-llca is a life-like cellular automaton simulation tool written in Go. It is built to allow **fast and easy experimention** with different automaton rules while being very **performant**: go-llca is multithreaded and can smoothly simulate boards with millions of cells.
+go-llca is a life-like cellular automaton simulation tool written in Go. It is built to allow **easy experimentation** with different automaton rules while being **very performant**: go-llca is multithreaded and can smoothly simulate boards with millions of cells. 
 
-![out2](https://user-images.githubusercontent.com/92261790/220154420-ab0629ab-3e55-4c66-8ace-e1fad030316e.gif)
+go-llca also makes it possible to export crisp GIFs of the performed simulations.
+
+![out2](https://user-images.githubusercontent.com/92261790/220476014-adcc6500-c2b1-4e34-8750-baddff8e43a9.gif)
+
+
+## What are life-like cellular automata?
+
+The most famous example of an LLCA is Conway's Game of Life: a 2D grid of cells, each of which is either dead or alive. The grid is repeatedly updated based on very simple rules:
+1. Any dead cell with exactly 3 live neighbors becomes a live cell (birth rule).
+2. Any live cell with exactly 2 or 3 live neighbors survives (survival rule).
+3. All other live cells die in the next generation. Similarly, all other dead cells stay dead.
+
+Life-like cellular automata are just like that, except we allow different birth and survival rules. For example, we may have an LLCA where a live cell is born from any dead cell which has 2, 3, 4, or 7 live neighbors, and any live cell survives if it has 3 or 5 live neighbors. We can then concisely write this rule as B2347/S35.
+
+These sorts of simple rules, when iterated many times, can give rise to surprisingly complex patterns. Examples generated using go-llca are shown in the gallery below.
 
 ## Installation
-To fetch, build and install to $GOPATH/bin (requires Go 1.18 or newer):
+To clone and build (requires Go 1.18 or newer):
 ```bash
-go install github.com/fplonka/go-llca@latest
+$ git clone https://github.com/fplonka/go-llca.git
+$ cd go-llca
+$ go build .
 ```
-Then to run (assuming default $GOPATH):
+Then run with:
 ```bash
-~/go/bin/go-llca
+$ ./go-llca
 ```
 
-## Gallery
+# Gallery
+**WARNING**: Some of the following animations contain **rapidly flashing lights**.
+
 B3/S23 (Conway's Game of Life):
 
 ![B3/S23](https://user-images.githubusercontent.com/92261790/220101889-3bad143a-91dd-4b35-9eb0-fcb8174a24ed.gif)
