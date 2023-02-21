@@ -1,4 +1,4 @@
-package main
+package game
 
 import (
 	"fmt"
@@ -48,6 +48,9 @@ type UI struct {
 
 	// True when the application is first started, false afterwards.
 	shouldDisplaySlashScreen bool
+
+	shouldDisplayWritingToFileText bool
+	shouldDisplayRecordingText     bool
 
 	// Font face for UI text rendering.
 	fontFace font.Face
@@ -118,6 +121,7 @@ func (ui *UI) handleInput(isGamePaused bool) {
 
 	// Toggle between editing birth vs survival rules on TAB press.
 	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+		fmt.Println("pressing tab")
 		if ui.rulesBeingChanged == &ui.selectedBRules {
 			ui.rulesBeingChanged = &ui.selectedSRules
 		} else {
@@ -197,6 +201,15 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 		drawTextWithShadow(screen, line2, ui.fontFace, (screenX-bounds2.Dx())/2, (screenY-bounds2.Dy())/2+h)
 
 		return
+	} else if ui.shouldDisplayWritingToFileText {
+		drawTextUpperLeft(screen, "saving gif to file...", ui.fontFace)
+	} else if ui.shouldDisplayRecordingText {
+		drawTextUpperLeft(screen, "recording...", ui.fontFace)
+	}
+
+	if ui.isFpsVisible {
+		fpsText := fmt.Sprintf("%.2f FPS", ebiten.ActualFPS())
+		drawTextUpperRight(screen, fpsText, ui.fontFace)
 	}
 
 	if isGamePaused {
@@ -211,7 +224,8 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 			"use [ and ] to change resolution",
 			"press F to toggle FPS visibility and SHIFT+F to toggle FPS cap",
 			"",
-			"press SPACE to pause/unpause or R to restart with new settings"}
+			"press SPACE to pause/unpause or R to restart with new settings",
+			"to start recording, unpause with SHIFT+SPACE and then pause again with SPACE to stop"}
 
 		infoFormatString := strings.Join(lines, "\n")
 
@@ -259,29 +273,36 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 
 		drawTextWithShadow(screen, infoString, ui.fontFace, infoX, infoY)
 	}
+}
 
-	if ui.isFpsVisible {
-		fpsString := fmt.Sprintf("%.2f FPS", ebiten.ActualFPS())
-		bounds := text.BoundString(ui.fontFace, fpsString)
+func drawTextUpperLeft(dst *ebiten.Image, str string, face font.Face) {
+	bounds := text.BoundString(face, str)
 
-		// This could also use ebiten.ScreenSizeInFullscreen(); TODO: standardize this with a method in main.
-		screenX, _ := screen.Size()
-		fpsX := screenX - bounds.Dx() - MARGIN
-		fpsY := bounds.Dy() + MARGIN
+	textX := MARGIN
+	textY := bounds.Dy() + MARGIN
 
-		drawTextWithShadow(screen, fmt.Sprintf("%.2f FPS", ebiten.ActualFPS()), ui.fontFace, fpsX, fpsY)
-	}
+	drawTextWithShadow(dst, str, face, textX, textY)
+}
 
+func drawTextUpperRight(dst *ebiten.Image, str string, face font.Face) {
+	bounds := text.BoundString(face, str)
+
+	screenX, _ := dst.Size()
+	textX := screenX - bounds.Dx() - MARGIN
+	textY := bounds.Dy() + MARGIN
+
+	drawTextWithShadow(dst, str, face, textX, textY)
+
+}
+
+func (ui *UI) getScaleFactor() int {
+	return ui.possibleScaleFactors[ui.scaleFactorIndex]
 }
 
 // Draw offset text in black and then white to get a slight "shadow" which helps with readability.
 func drawTextWithShadow(dst *ebiten.Image, str string, face font.Face, x, y int) {
 	text.Draw(dst, str, face, x+SHADOW_OFFSET, y+SHADOW_OFFSET, color.Black)
 	text.Draw(dst, str, face, x, y, color.White)
-}
-
-func (ui *UI) getScaleFactor() int {
-	return ui.possibleScaleFactors[ui.scaleFactorIndex]
 }
 
 func intMin(a, b int) int {

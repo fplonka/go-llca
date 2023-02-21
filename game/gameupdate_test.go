@@ -1,4 +1,4 @@
-package main
+package game
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 
 func TestUpdate(t *testing.T) {
 	g := &Game{}
-	g.initializeState() // Only called here.
-	g.initializeBoard()
+	g.InitializeState()
+	g.InitializeBoard()
 	g.isPaused = false
 
 	for i := 1; i <= 1000; i++ {
