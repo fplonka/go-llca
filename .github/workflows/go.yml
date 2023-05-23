@@ -1,0 +1,40 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+  
+name: Go
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.19
+        
+    - uses: actions/checkout@v3
+        
+    - name: Get dependencies
+      run: |
+        sudo apt-get update
+        sudo apt install -y libc6-dev libglu1-mesa-dev libgl1-mesa-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev libasound2-dev pkg-config
+        sudo apt install -y xvfb
+        go mod download
+            
+    - name: Run Xvfb
+      run: |
+        sudo Xvfb :99 &
+        echo "DISPLAY=:99.0" >> $GITHUB_ENV
+
+    - name: Build
+      run: go build -v ./...
+  
+    - name: Test
+      run: go test -v ./...
