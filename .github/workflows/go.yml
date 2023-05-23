@@ -24,8 +24,14 @@ jobs:
     - name: Get dependencies
       run: |
         sudo apt-get update
-        sudo apt install libc6-dev libglu1-mesa-dev libgl1-mesa-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev libasound2-dev pkg-config
+        sudo apt install -y libc6-dev libglu1-mesa-dev libgl1-mesa-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev libasound2-dev pkg-config
+        sudo apt install -y xvfb
         go mod download
+            
+    - name: Run Xvfb
+      run: |
+        sudo Xvfb :99 &
+        echo "DISPLAY=:99.0" >> $GITHUB_ENV
 
     - name: Build
       run: go build -v ./...
