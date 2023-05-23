@@ -1,12 +1,11 @@
 package game
 
 import (
+	_ "embed"
 	"fmt"
 	"image/color"
-	"io"
 	"log"
 	"math"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -27,6 +26,11 @@ const (
 	// How many pixels to offset the black shadow text from the white foreground text.
 	SHADOW_OFFSET = 2
 )
+
+// The font used by the UI. Embedded so that the binary can be used without depending on a file or remote asset.
+//
+//go:embed assets/JetBrainsMono-Medium.ttf
+var fontBytes []byte
 
 type UI struct {
 	// Current state of the rules being edited in the pause menu.
@@ -54,6 +58,10 @@ type UI struct {
 
 	// Font face for UI text rendering.
 	fontFace font.Face
+
+	// Game updates 2^speed * 60 times per second. So speed = 2 gives effective 120FPS, speed = -3 gives 7.5FPS.
+	// gets rounded when actually setting the Ticks Per Second).
+	speed int
 }
 
 func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initialScaleIndex int) {
@@ -82,18 +90,8 @@ func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initia
 	ui.fontFace = loadFontFace(FONT_PATH)
 }
 
-// Loads a font face from a remote .ttf file URL.
+// Returns the font face used by the UI, loaded from the embedded font file byte slice.
 func loadFontFace(path string) font.Face {
-	resp, err := http.Get(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fontBytes, err := io.ReadAll(resp.Body)
-
-	if err != nil {
-		log.Fatal(err)
-	}
 	tt, err := opentype.Parse(fontBytes)
 	if err != nil {
 		log.Fatal(err)
@@ -111,17 +109,25 @@ func loadFontFace(path string) font.Face {
 }
 
 func (ui *UI) handleInput(isGamePaused bool) {
-	// If the simulation is running, then the only UI-related input to handle is FPS visibility.
+	// Toggle FPS visibility on F press.
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) && !ebiten.IsKeyPressed(ebiten.KeyShift) {
 		ui.isFpsVisible = !ui.isFpsVisible
 	}
+
+	// Adjust update speed on left/right arrow press.
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		ui.speed -= 1
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		ui.speed += 1
+	}
+
 	if !isGamePaused {
 		return
 	}
 
 	// Toggle between editing birth vs survival rules on TAB press.
 	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
-		fmt.Println("pressing tab")
 		if ui.rulesBeingChanged == &ui.selectedBRules {
 			ui.rulesBeingChanged = &ui.selectedSRules
 		} else {
@@ -169,7 +175,7 @@ func (ui *UI) handleInput(isGamePaused bool) {
 
 func (ui *UI) handleNumberKeys() {
 	// Figure out which number key is being pressed. Handles the possibility of multiple at once, which is unlikely but
-	// rare.
+	// possible.
 	nums := []uint8{}
 	keys := []ebiten.Key{ebiten.Key0, ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8}
 	for _, key := range keys {
@@ -208,7 +214,7 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 	}
 
 	if ui.isFpsVisible {
-		fpsText := fmt.Sprintf("%.2f FPS", ebiten.ActualFPS())
+		fpsText := fmt.Sprintf("%.2f FPS (%vx)", ebiten.ActualFPS(), ui.getSpeedup())
 		drawTextUpperRight(screen, fpsText, ui.fontFace)
 	}
 
@@ -222,7 +228,8 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 			"use number keys to modify cell %v rules (press TAB to switch, C to clear)",
 			"use - and + to change initial live cell percentage (hold SHIFT/CTRL for smaller/smallest increment)",
 			"use [ and ] to change resolution",
-			"press F to toggle FPS visibility and SHIFT+F to toggle FPS cap",
+			"use ← and → to change speed",
+			"press F to toggle FPS visibility",
 			"",
 			"press SPACE to pause/unpause or R to restart with new settings",
 			"to start recording, unpause with SHIFT+SPACE and then pause again with SPACE to stop"}
@@ -303,6 +310,10 @@ func (ui *UI) getScaleFactor() int {
 func drawTextWithShadow(dst *ebiten.Image, str string, face font.Face, x, y int) {
 	text.Draw(dst, str, face, x+SHADOW_OFFSET, y+SHADOW_OFFSET, color.Black)
 	text.Draw(dst, str, face, x, y, color.White)
+}
+
+func (ui *UI) getSpeedup() float64 {
+	return math.Pow(2, float64(ui.speed))
 }
 
 func intMin(a, b int) int {

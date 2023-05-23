@@ -15,7 +15,8 @@ func main() {
 
 	// By default, update and render as fast as possible. Currently this makes the simulation speed "pulsate" slightly,
 	// maybe because of GC activity?
-	ebiten.SetTPS(ebiten.SyncWithFPS)
+	// FIXED?
+
 	ebiten.SetFPSMode(ebiten.FPSModeVsyncOn)
 
 	ebiten.SetWindowTitle("go-llca")
