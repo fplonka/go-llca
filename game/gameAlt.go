@@ -64,7 +64,7 @@ func (g *Game) updateRangeAlt(minY, maxY int) {
 				g.buffer[(i+1)*(gridXPlusTwo)+j] += 2
 				g.buffer[(i+1)*(gridXPlusTwo)+j+1] += 2
 				// -1 because i and j and 1-indexed due to the border, which the game board image doesn't have.
-				setPixel(g.pixels, g.gridX, j-1, i-1, false)
+				setPixel(g.pixels, g.gridX, j-1, i-1, 0)
 
 			} else if g.becomesDeadTable[val] { // Checking if the cell is becoming dead. val&1 == 1 ensures
 				// that this cell was alive previously. Since this cell is alive, val>>1 is the one more than the number
@@ -81,7 +81,7 @@ func (g *Game) updateRangeAlt(minY, maxY int) {
 				g.buffer[(i+1)*(gridXPlusTwo)+j-1] -= 2
 				g.buffer[(i+1)*(gridXPlusTwo)+j] -= 2
 				g.buffer[(i+1)*(gridXPlusTwo)+j+1] -= 2
-				setPixel(g.pixels, g.gridX, j-1, i-1, true)
+				setPixel(g.pixels, g.gridX, j-1, i-1, 1)
 			}
 		}
 	}

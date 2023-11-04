@@ -10,8 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-// TODO: way to stop game...
-
 // Random number source for game board initialization.
 var r *rand.Rand
 
@@ -126,7 +124,7 @@ func (g *Game) updateRange(minY, maxY int) {
 				g.buffer[(i+1)*(gridXPlusTwo)+j] += 2
 				g.buffer[(i+1)*(gridXPlusTwo)+j+1] += 2
 				// -1 because i and j and 1-indexed due to the border, which the game board image doesn't have.
-				setPixel(g.pixels, g.gridX, j-1, i-1, false)
+				setPixel(g.pixels, g.gridX, j-1, i-1, 0)
 
 			} else if g.becomesDeadTable[val] { // Checking if the cell is becoming dead. val&1 == 1 ensures
 				// that this cell was alive previously. Since this cell is alive, val>>1 is the one more than the number
@@ -143,7 +141,7 @@ func (g *Game) updateRange(minY, maxY int) {
 				g.buffer[(i+1)*(gridXPlusTwo)+j-1] -= 2
 				g.buffer[(i+1)*(gridXPlusTwo)+j] -= 2
 				g.buffer[(i+1)*(gridXPlusTwo)+j+1] -= 2
-				setPixel(g.pixels, g.gridX, j-1, i-1, true)
+				setPixel(g.pixels, g.gridX, j-1, i-1, 1)
 			}
 		}
 	}
@@ -222,7 +220,6 @@ func (g *Game) Update() error {
 var boardUpdates int = 0
 
 func (g *Game) updateBoard() error {
-
 	copy(g.buffer, g.worldGrid)
 
 	// Divide the board into equal-sized parts and create tasks for each part.
@@ -307,13 +304,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 var colors [2][]byte = [2][]byte{{255, 255, 255, 255}, {0, 0, 0, 255}}
 
 // Sets a pixel at a given index to either black or white.
-// TODO: optimze away the if with; index into len 2 array
-func setPixel(pixels []byte, gridX, x, y int, isBlack bool) {
-	i := 0
-	if isBlack {
-		i = 1
-	}
-
+func setPixel(pixels []byte, gridX, x, y int, i int) {
 	ind := 4 * (y*gridX + x)
 	copy(pixels[ind:ind+4], colors[i])
 }
@@ -407,7 +398,7 @@ func (g *Game) InitializeBoard() {
 	// Make all pixels black initially.
 	for i := 0; i < g.gridY; i++ {
 		for j := 0; j < g.gridX; j++ {
-			setPixel(g.pixels, g.gridX, j, i, true)
+			setPixel(g.pixels, g.gridX, j, i, 1)
 		}
 	}
 
@@ -418,7 +409,7 @@ func (g *Game) InitializeBoard() {
 			if int(r.Int63n(100000)) < int(1000*g.avgStartingLiveCellPercentage) { // Cell becomes alive.
 				g.worldGrid[i*(g.gridX+2)+j] |= 1
 				// g.pixels.Set(j-1, i-1, color.White)
-				setPixel(g.pixels, g.gridX, j-1, i-1, false)
+				setPixel(g.pixels, g.gridX, j-1, i-1, 0)
 				// Update live neighbour counts in the cells affected by this cell becoming alive.
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
