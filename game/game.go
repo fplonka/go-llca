@@ -3,11 +3,14 @@ package game
 import (
 	"image/color"
 	"math/rand"
+	"runtime"
 	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
+
+// TODO: way to stop game...
 
 // Random number source for game board initialization.
 var r *rand.Rand
@@ -18,8 +21,10 @@ const (
 	SEED = 0
 
 	// The number of workers available in the worker pool. A worker pool is used to efficiently handle concurrency.
-	POOL_SIZE = 64
+	// POOL_SIZE = 16
 )
+
+var POOL_SIZE int = runtime.NumCPU() * 2
 
 // The value at index i corresponds to the birth/survival rule for when i neighbours are alive.
 type Ruleset [9]bool
@@ -33,6 +38,7 @@ type Game struct {
 	// UI state, mostly for pause menu.
 	ui UI
 
+	// TODO: update this, it's not accurate anymore. In particular, cells no longer count themselves as neighbours.
 	// Grid state.
 	// Each uint8 value represents both the state of the cell at that position (dead or alive) and the number of living
 	// neighbours (from 0 to 9) of that cells.
@@ -68,6 +74,9 @@ type Game struct {
 	bRules Ruleset
 	sRules Ruleset
 
+	becomesAliveTable [18]bool
+	becomesDeadTable  [18]bool
+
 	// The degree to which the game is "zoomed in". For example, with a scale factor of 3, each game board cell is drawn
 	// as a 3x3 square on a fullscreen window. Note that each cell still corresponds to one pixel in pixels.
 	scaleFactor int
@@ -100,39 +109,46 @@ func (g *Game) updateRange(minY, maxY int) {
 	for i := minY; i <= maxY; i++ {
 		for j := 1; j <= g.gridX; j++ {
 			// Getting the "2D g.worldGrid[i][j]" index from the 1D slice. +2 because of the board edge border.
-			ind := i*(g.gridX+2) + j
-			val := g.worldGrid[ind]
+			val := g.worldGrid[i*(g.gridX+2)+j]
+			gridXPlusTwo := g.gridX + 2
 
-			if val&1 == 0 && g.bRules[val>>1] { // Checking if the cell is becoming alive. val&1 == 0 ensures that
+			if g.becomesAliveTable[val] { // Checking if the cell is becoming alive. val&1 == 0 ensures that
 				// this cell was dead previously, and val>>1 gets the number of live neighbours.
 
-				g.buffer[ind] |= 1 // Set the last bit to 1 to indicate that this cell is now alive.
-				for a := -1; a <= 1; a++ {
-					for b := -1; b <= 1; b++ {
-						// Update all the neighbours and also this cell. Adding 2 adds to the bit-shifted
-						// neighbour-count part of the value.
-						g.buffer[(i+a)*(g.gridX+2)+j+b] += 2
-
-					}
-				}
+				// g.buffer[ind] |= 1 // Set the last bit to 1 to indicate that this cell is now alive.
+				g.buffer[(i-1)*(gridXPlusTwo)+j-1] += 2
+				g.buffer[(i-1)*(gridXPlusTwo)+j] += 2
+				g.buffer[(i-1)*(gridXPlusTwo)+j+1] += 2
+				g.buffer[(i)*(gridXPlusTwo)+j-1] += 2
+				g.buffer[(i)*(gridXPlusTwo)+j] += 1
+				g.buffer[(i)*(gridXPlusTwo)+j+1] += 2
+				g.buffer[(i+1)*(gridXPlusTwo)+j-1] += 2
+				g.buffer[(i+1)*(gridXPlusTwo)+j] += 2
+				g.buffer[(i+1)*(gridXPlusTwo)+j+1] += 2
 				// -1 because i and j and 1-indexed due to the border, which the game board image doesn't have.
 				setPixel(g.pixels, g.gridX, j-1, i-1, false)
 
-			} else if val&1 == 1 && !g.sRules[val>>1-1] { // Checking if the cell is becoming dead. val&1 == 1 ensures
+			} else if g.becomesDeadTable[val] { // Checking if the cell is becoming dead. val&1 == 1 ensures
 				// that this cell was alive previously. Since this cell is alive, val>>1 is the one more than the number
 				// of live neighbours, as this cell is also counted in val>1, so we check val>>1-1 in SRules.
 
 				// The rest of this case is analogous to the cell becoming alive case.
-				g.buffer[ind] -= 1 // Set the last bit to 0 to indicate that this cell is now dead.
-				for a := -1; a <= 1; a++ {
-					for b := -1; b <= 1; b++ {
-						g.buffer[(i+a)*(g.gridX+2)+j+b] -= 2
-					}
-				}
+				// g.buffer[ind] -= 1 // Set the last bit to 0 to indicate that this cell is now dead.
+				g.buffer[(i-1)*(gridXPlusTwo)+j-1] -= 2
+				g.buffer[(i-1)*(gridXPlusTwo)+j] -= 2
+				g.buffer[(i-1)*(gridXPlusTwo)+j+1] -= 2
+				g.buffer[(i)*(gridXPlusTwo)+j-1] -= 2
+				g.buffer[(i)*(gridXPlusTwo)+j] -= 1
+				g.buffer[(i)*(gridXPlusTwo)+j+1] -= 2
+				g.buffer[(i+1)*(gridXPlusTwo)+j-1] -= 2
+				g.buffer[(i+1)*(gridXPlusTwo)+j] -= 2
+				g.buffer[(i+1)*(gridXPlusTwo)+j+1] -= 2
 				setPixel(g.pixels, g.gridX, j-1, i-1, true)
 			}
 		}
 	}
+
+	g.wg.Done()
 }
 
 func (g *Game) Update() error {
@@ -142,6 +158,7 @@ func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		g.restart()
 	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		// After this frame, the user has entered/left the pause menu.
 		defer func() { g.isPaused = !g.isPaused }()
@@ -175,6 +192,9 @@ func (g *Game) Update() error {
 	}
 
 	if g.isPaused {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			return ebiten.Termination
+		}
 		return nil
 	}
 
@@ -194,13 +214,15 @@ func (g *Game) Update() error {
 	g.updateCount++
 
 	return nil
-
 }
 
 // Update the game board. To do this efficiently we copy the board state into a buffer and modifying only those cells in
 //
 //	the buffer which are changing state (becoming alive or dying).
+var boardUpdates int = 0
+
 func (g *Game) updateBoard() error {
+
 	copy(g.buffer, g.worldGrid)
 
 	// Divide the board into equal-sized parts and create tasks for each part.
@@ -217,24 +239,29 @@ func (g *Game) updateBoard() error {
 		}
 
 		g.wg.Add(1)
+		go g.updateRange(minY+1, maxY-1)
 		// We can't update the border regions of a part since that would lead to data races.
-		g.taskChannel <- Task{minY: minY + 1, maxY: maxY - 1}
+		// g.taskChannel <- Task{minY: minY + 1, maxY: maxY - 1}
+
 	}
 	g.wg.Wait()
 
 	// Update the border regions now that it's safe to do so.
 	g.wg.Add(2)
-	g.taskChannel <- Task{minY: 1, maxY: 1}
-	g.taskChannel <- Task{minY: g.gridY, maxY: g.gridY}
+
+	go g.updateRange(1, 1)
+	go g.updateRange(g.gridY, g.gridY)
 	for i := 1; i < numParts; i++ {
 		minY := 1 + i*rowsPerPart
 
 		g.wg.Add(1)
-		g.taskChannel <- Task{minY: minY - 1, maxY: minY}
+		go g.updateRange(minY-1, minY)
 	}
 	g.wg.Wait()
 
 	copy(g.worldGrid, g.buffer)
+
+	boardUpdates++
 
 	return nil
 }
@@ -243,6 +270,8 @@ func (g *Game) restart() {
 	// Change the rules, scale factor and initial live cell percentage to the ones selected in the UI.
 	g.bRules = g.ui.selectedBRules
 	g.sRules = g.ui.selectedSRules
+
+	g.updateTables()
 
 	g.scaleFactor = g.ui.getScaleFactor()
 	g.avgStartingLiveCellPercentage = g.ui.selectedLiveCellPercent
@@ -275,14 +304,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.ui.Draw(screen, g.isPaused)
 }
 
+var colors [2][]byte = [2][]byte{{255, 255, 255, 255}, {0, 0, 0, 255}}
+
 // Sets a pixel at a given index to either black or white.
+// TODO: optimze away the if with; index into len 2 array
 func setPixel(pixels []byte, gridX, x, y int, isBlack bool) {
-	color := []byte{255, 255, 255, 255}
+	i := 0
 	if isBlack {
-		color = []byte{0, 0, 0, 255}
+		i = 1
 	}
+
 	ind := 4 * (y*gridX + x)
-	copy(pixels[ind:ind+4], color)
+	copy(pixels[ind:ind+4], colors[i])
 }
 
 // Returns the size of the screen we want to be rendering to.
@@ -301,6 +334,7 @@ func (g *Game) InitializeState() {
 	g.sRules = Ruleset{}
 	g.sRules[2] = true
 	g.sRules[3] = true
+	g.updateTables()
 
 	g.avgStartingLiveCellPercentage = 50.0
 
@@ -339,6 +373,24 @@ func (g *Game) worker() {
 	}
 }
 
+func (g *Game) updateTables() {
+	for i := 0; i < len(g.becomesAliveTable); i++ {
+		g.becomesAliveTable[i] = false
+		g.becomesDeadTable[i] = false
+	}
+
+	for i := 0; i < len(g.bRules); i++ {
+		if g.bRules[i] {
+			g.becomesAliveTable[2*i] = true
+		}
+	}
+	for i := 0; i < len(g.sRules); i++ {
+		if !g.sRules[i] {
+			g.becomesDeadTable[1+2*i] = true
+		}
+	}
+}
+
 // Initializes the simulation board, filling it with cells randomly, and creates the corresponding initial simulation
 // image. The chance of a given cell being set to alive is given by g.avgStartingLiveCellPercentage.
 func (g *Game) InitializeBoard() {
@@ -370,7 +422,9 @@ func (g *Game) InitializeBoard() {
 				// Update live neighbour counts in the cells affected by this cell becoming alive.
 				for a := -1; a <= 1; a++ {
 					for b := -1; b <= 1; b++ {
-						g.worldGrid[(i+a)*(g.gridX+2)+j+b] += 2
+						if (a != 0) || (b != 0) {
+							g.worldGrid[(i+a)*(g.gridX+2)+j+b] += 2
+						}
 					}
 				}
 			}

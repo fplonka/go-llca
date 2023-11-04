@@ -74,7 +74,6 @@ func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initia
 
 	ui.rulesBeingChanged = &ui.selectedBRules
 	ui.isFpsVisible = true
-	ui.shouldDisplaySlashScreen = true
 	ui.scaleFactorIndex = initialScaleIndex
 
 	// Initialize possible scale factors, i.e. find the integers which divide both the screen width and height.
@@ -88,6 +87,7 @@ func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initia
 	}
 
 	ui.fontFace = loadFontFace(FONT_PATH)
+	ui.shouldDisplaySlashScreen = true
 }
 
 // Returns the font face used by the UI, loaded from the embedded font file byte slice.
@@ -232,7 +232,10 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 			"press F to toggle FPS visibility",
 			"",
 			"press SPACE to pause/unpause or R to restart with new settings",
-			"to start recording, unpause with SHIFT+SPACE and then pause again with SPACE to stop"}
+			"to start recording, unpause with SHIFT+SPACE and then pause again with SPACE to stop",
+			"",
+			"press ESC to quit",
+		}
 
 		infoFormatString := strings.Join(lines, "\n")
 
