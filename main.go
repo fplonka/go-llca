@@ -16,8 +16,13 @@ var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
 
 func run() {
 	// Set the right window properties. Should give pixel perfect image in fullscreen.
-	ebiten.SetFullscreen(true)
-	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	if game.SAVING_ENABLED {
+		ebiten.SetFullscreen(true)
+		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+
+	} else {
+		ebiten.SetFullscreen(false)
+	}
 	ebiten.SetWindowSize(ebiten.ScreenSizeInFullscreen())
 
 	ebiten.SetVsyncEnabled(true)

@@ -269,6 +269,11 @@ func (g *Game) restart() {
 	g.scaleFactor = g.ui.getScaleFactor()
 	g.avgStartingLiveCellPercentage = g.ui.selectedLiveCellPercent
 
+	// Fix transparency overlay which could have been broken by a resize (if running in browser)
+	x, y := ebiten.ScreenSizeInFullscreen()
+	g.transparencyOverlay = ebiten.NewImage(x, y)
+	g.transparencyOverlay.Fill(color.RGBA{0, 0, 0, 255 * 3 / 4}) // black but not completely opaque
+
 	// Reset the board with the new paremeters.
 	g.InitializeBoard()
 }
@@ -340,8 +345,6 @@ func (g *Game) InitializeState() {
 	g.gridX = x / g.scaleFactor
 	g.gridY = y / g.scaleFactor
 
-	// The transparency overlay has a constant size corresponding to the max screen size, so that we can always use this
-	// same overlay instead of creating new ones when the scale factors changes.
 	g.transparencyOverlay = ebiten.NewImage(x, y)
 	g.transparencyOverlay.Fill(color.RGBA{0, 0, 0, 255 * 3 / 4}) // black but not completely opaque
 

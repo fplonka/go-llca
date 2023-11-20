@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	FONT_PATH = "https://github.com/JetBrains/JetBrainsMono/raw/master/fonts/ttf/JetBrainsMono-Medium.ttf"
 	FONT_SIZE = 12
 
 	// How many pixels away from the edge of the screen to draw UI elements.
@@ -86,12 +85,12 @@ func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initia
 		}
 	}
 
-	ui.fontFace = loadFontFace(FONT_PATH)
+	ui.fontFace = loadFontFace()
 	ui.shouldDisplaySlashScreen = true
 }
 
 // Returns the font face used by the UI, loaded from the embedded font file byte slice.
-func loadFontFace(path string) font.Face {
+func loadFontFace() font.Face {
 	tt, err := opentype.Parse(fontBytes)
 	if err != nil {
 		log.Fatal(err)
@@ -109,8 +108,8 @@ func loadFontFace(path string) font.Face {
 }
 
 func (ui *UI) handleInput(isGamePaused bool) {
-	// Toggle FPS visibility on F press.
-	if inpututil.IsKeyJustPressed(ebiten.KeyF) && !ebiten.IsKeyPressed(ebiten.KeyShift) {
+	// Toggle FPS visibility on V press.
+	if inpututil.IsKeyJustPressed(ebiten.KeyV) && !ebiten.IsKeyPressed(ebiten.KeyShift) {
 		ui.isFpsVisible = !ui.isFpsVisible
 	}
 
@@ -229,7 +228,7 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 			"use - and + to change initial live cell percentage (hold SHIFT/CTRL for smaller/smallest increment)",
 			"use [ and ] to change resolution",
 			"use ← and → to change speed",
-			"press F to toggle FPS visibility",
+			"press V to toggle FPS visibility",
 			"",
 			"press SPACE to pause/unpause or R to restart with new settings",
 		}
@@ -240,6 +239,10 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 				"",
 				"press ESC to quit",
 			}...)
+		} else {
+			lines = append(lines,
+				"press F to toggle fullscreen and restart")
+
 		}
 
 		infoFormatString := strings.Join(lines, "\n")
