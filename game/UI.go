@@ -274,7 +274,7 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 		}
 
 		// Make a string showing the selected board resolution.
-		screenX, screenY := ebiten.ScreenSizeInFullscreen()
+		screenX, screenY := screen.Bounds().Dx(), screen.Bounds().Dy()
 		scaleFactor := ui.getScaleFactor()
 		resolution := fmt.Sprintf("%vx%v", screenX/scaleFactor, screenY/scaleFactor)
 

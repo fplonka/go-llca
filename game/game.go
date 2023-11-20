@@ -312,7 +312,8 @@ func setPixel(pixels []byte, gridX, x, y int, i int) {
 
 // Returns the size of the screen we want to be rendering to.
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return ebiten.ScreenSizeInFullscreen()
+	return g.gridX * g.scaleFactor, g.gridY * g.scaleFactor
+	// return ebiten.ScreenSizeInFullscreen()
 }
 
 // Initializes the initial simulation state. Called only once, before ebiten.runGame(g).
@@ -336,13 +337,16 @@ func (g *Game) InitializeState() {
 	// Start the simulation at the second smallest scale factor, i.e. slightly zoomed in. For most screen resolutions
 	// this will be a 2x zoom (since both screen height and width are usually even).
 	initialScaleIndex := 1
-	if !SAVING_ENABLED {
-		// In browsers sometimes the x and y res will end up relatively prime and defaulting to the second index will crash
-		initialScaleIndex = 0
-	}
 
 	// Initialize UI, get the chosen scale factor from it.
 	g.ui.initialize(g.bRules, g.sRules, g.avgStartingLiveCellPercentage, initialScaleIndex)
+
+	if len(g.ui.possibleScaleFactors) == 1 {
+		// Sometimes the x and y res will end up relatively prime and defaulting to the second index will crash
+		initialScaleIndex = 0
+		g.ui.scaleFactorIndex = 0
+	}
+
 	g.scaleFactor = g.ui.getScaleFactor()
 
 	x, y := ebiten.ScreenSizeInFullscreen()
