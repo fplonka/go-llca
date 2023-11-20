@@ -220,8 +220,8 @@ func (g *Game) updateBoard() error {
 
 	// Divide the board into equal-sized parts and create tasks for each part.
 	numParts := POOL_SIZE
-	if numParts > g.gridY/4 { // Cap the number of parts on small boards.
-		numParts = g.gridY / 4
+	if g.gridY/numParts < 3 && g.gridY >= 3 { // Cap the number of parts on small boards.
+		numParts = g.gridY / 3
 	}
 	rowsPerPart := g.gridY / numParts
 	for i := 0; i < numParts; i++ {
