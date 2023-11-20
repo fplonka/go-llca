@@ -336,6 +336,10 @@ func (g *Game) InitializeState() {
 	// Start the simulation at the second smallest scale factor, i.e. slightly zoomed in. For most screen resolutions
 	// this will be a 2x zoom (since both screen height and width are usually even).
 	initialScaleIndex := 1
+	if !SAVING_ENABLED {
+		// In browsers sometimes the x and y res will end up relatively prime and defaulting to the second index will crash
+		initialScaleIndex = 0
+	}
 
 	// Initialize UI, get the chosen scale factor from it.
 	g.ui.initialize(g.bRules, g.sRules, g.avgStartingLiveCellPercentage, initialScaleIndex)
