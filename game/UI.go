@@ -75,7 +75,14 @@ func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initia
 	ui.isFpsVisible = true
 	ui.scaleFactorIndex = initialScaleIndex
 
-	// Initialize possible scale factors, i.e. find the integers which divide both the screen width and height.
+	ui.initScaleFactors()
+
+	ui.fontFace = loadFontFace()
+	ui.shouldDisplaySlashScreen = true
+}
+
+// Initialize possible scale factors, i.e. find the integers which divide both the screen width and height.
+func (ui *UI) initScaleFactors() {
 	ui.possibleScaleFactors = []int{}
 	screenX, screenY := ebiten.ScreenSizeInFullscreen()
 	smallerDimension := intMin(screenX, screenY)
@@ -84,9 +91,9 @@ func (ui *UI) initialize(BRules, SRules Ruleset, liveCellPercent float64, initia
 			ui.possibleScaleFactors = append(ui.possibleScaleFactors, i)
 		}
 	}
-
-	ui.fontFace = loadFontFace()
-	ui.shouldDisplaySlashScreen = true
+	if ui.scaleFactorIndex >= len(ui.possibleScaleFactors) {
+		ui.scaleFactorIndex = len(ui.possibleScaleFactors) - 1
+	}
 }
 
 // Returns the font face used by the UI, loaded from the embedded font file byte slice.

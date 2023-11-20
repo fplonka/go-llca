@@ -274,6 +274,9 @@ func (g *Game) restart() {
 	g.transparencyOverlay = ebiten.NewImage(x, y)
 	g.transparencyOverlay.Fill(color.RGBA{0, 0, 0, 255 * 3 / 4}) // black but not completely opaque
 
+	// Could be at new board res now so we need to generate possible zoom levels again
+	g.ui.initScaleFactors()
+
 	// Reset the board with the new paremeters.
 	g.InitializeBoard()
 }
