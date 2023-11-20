@@ -3,7 +3,6 @@ package game
 import (
 	"image/color"
 	"math/rand"
-	"runtime"
 	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -17,12 +16,7 @@ const (
 	// Seed for the random number source. r is seeded only once and is not reinitialized with the seed before every run, so
 	// the order in which simulation runs are started will affect their initial board states.
 	SEED = 0
-
-	// The number of workers available in the worker pool. A worker pool is used to efficiently handle concurrency.
-	// POOL_SIZE = 16
 )
-
-var POOL_SIZE int = runtime.NumCPU() * 2
 
 // The value at index i corresponds to the birth/survival rule for when i neighbours are alive.
 type Ruleset [9]bool
@@ -161,28 +155,30 @@ func (g *Game) Update() error {
 		// After this frame, the user has entered/left the pause menu.
 		defer func() { g.isPaused = !g.isPaused }()
 
-		// A SHIFT+SPACE press when paused, so we start saving.
-		if g.isPaused && ebiten.IsKeyPressed(ebiten.KeyShift) && !g.isSaving {
-			g.isSaving = true
-			g.ui.shouldDisplayRecordingText = true
-			g.gifSaver = newGifSaver(g.bRules, g.sRules)
+		if SAVING_ENABLED {
+			// A SHIFT+SPACE press when paused, so we start saving.
+			if g.isPaused && ebiten.IsKeyPressed(ebiten.KeyShift) && !g.isSaving {
+				g.isSaving = true
+				g.ui.shouldDisplayRecordingText = true
+				g.gifSaver = newGifSaver(g.bRules, g.sRules)
 
-			// Return instead of doing an update step, since saving the frame happens in Draw() and so if we update
-			// before that we will skip one frame of the initial random board state.
-			return nil
-		}
+				// Return instead of doing an update step, since saving the frame happens in Draw() and so if we update
+				// before that we will skip one frame of the initial random board state.
+				return nil
+			}
 
-		// A SPACE press when not paused and saving, so we stop saving.
-		if !g.isPaused && g.isSaving {
-			g.isSaving = false
-			g.ui.shouldDisplayRecordingText = false
-			go func() {
-				// Write to file concurrently so as to not cause a freeze, as this can take a few seconds, and tell the
-				// UI to indicate that we're saving.
-				g.ui.shouldDisplayWritingToFileText = true
-				g.gifSaver.writeToFile()
-				g.ui.shouldDisplayWritingToFileText = false
-			}()
+			// A SPACE press when not paused and saving, so we stop saving.
+			if !g.isPaused && g.isSaving {
+				g.isSaving = false
+				g.ui.shouldDisplayRecordingText = false
+				go func() {
+					// Write to file concurrently so as to not cause a freeze, as this can take a few seconds, and tell the
+					// UI to indicate that we're saving.
+					g.ui.shouldDisplayWritingToFileText = true
+					g.gifSaver.writeToFile()
+					g.ui.shouldDisplayWritingToFileText = false
+				}()
+			}
 		}
 
 		// The user has left the splash screen.
@@ -190,7 +186,7 @@ func (g *Game) Update() error {
 	}
 
 	if g.isPaused {
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if SAVING_ENABLED && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			return ebiten.Termination
 		}
 		return nil

@@ -232,9 +232,14 @@ func (ui *UI) Draw(screen *ebiten.Image, isGamePaused bool) {
 			"press F to toggle FPS visibility",
 			"",
 			"press SPACE to pause/unpause or R to restart with new settings",
-			"to start recording, unpause with SHIFT+SPACE and then pause again with SPACE to stop",
-			"",
-			"press ESC to quit",
+		}
+
+		if SAVING_ENABLED {
+			lines = append(lines, []string{
+				"to start recording, unpause with SHIFT+SPACE and then pause again with SPACE to stop",
+				"",
+				"press ESC to quit",
+			}...)
 		}
 
 		infoFormatString := strings.Join(lines, "\n")

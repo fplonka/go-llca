@@ -21,6 +21,11 @@ const (
 	FRAME_DELAY = 2
 )
 
+type GifSaverInterface interface {
+	saveFrame(img image.Image)
+	writeToFile()
+}
+
 type GifSaver struct {
 	// The filename to which the GifSaver will save the GIF file.
 	fileName string
